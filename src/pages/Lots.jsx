@@ -40,7 +40,7 @@ function shapeApiLot(lot) {
     status: isSold ? 'sold' : 'unsold',
     startingBid: lot.startingBid,
     soldPrice,
-    bids: lot.bids?.length ?? 0,
+    bids: lot._count?.bids ?? lot.bids?.length ?? 0,
     winner,
     artworkUrl: lot.artworkUrl ?? null,
     artworkHeadline: lot.artworkHeadline ?? null,
