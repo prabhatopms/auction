@@ -3,8 +3,8 @@ export const fmt = (n) => '₹' + Math.round(n).toLocaleString('en-IN');
 export function getArtworkUrl(lot, apiBaseUrl = '') {
   if (!lot) return null;
 
-  // Cache-bust value: use swappedAt timestamp if present, otherwise fall back to "1"
-  const v = lot._artworkSwappedAt ?? 1;
+  // Cache-bust value: use swappedAt timestamp if present, otherwise fall back to "2"
+  const v = lot._artworkSwappedAt ?? 2;
 
   const raw = lot.artworkUrl;
   if (raw && raw !== 'null' && raw !== 'undefined') {
