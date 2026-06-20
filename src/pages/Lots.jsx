@@ -344,7 +344,7 @@ export default function Lots() {
       </header>
 
       <div className="lots-wrap">
-        {!lotClosed && (
+        {apiLot && (
           <Hero
             lot={heroLot}
             currentBid={displayBid}
