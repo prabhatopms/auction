@@ -224,9 +224,6 @@ router.get('/past', async (req, res) => {
     orderBy: { endsAt: 'desc' },
     take: 50,
     include: {
-      _count: {
-        select: { bids: true },
-      },
       bids: {
         orderBy: { amount: 'desc' },
         take: 1,
