@@ -92,7 +92,7 @@ function ClosedBlob({ lot, bids, user, winner, myRank, onPayNow }) {
             </p>
           )}
           <p style={{ fontSize: '12px', lineHeight: 1.6, color: 'var(--txt-mute)', margin: 0 }}>
-            {lot?.paymentStatus === 'pending_2nd' || lot?.paymentStatus === 'pending_3rd'
+            {(lot?.paymentStatus === 'pending_2nd' && myRank === 2) || (lot?.paymentStatus === 'pending_3rd' && myRank === 3)
               ? `You're now #${myRank} — check your email for a payment link.`
               : myRank === 2
                 ? "You're 2nd in line. If the winner doesn't pay within 2h, you'll be emailed."
