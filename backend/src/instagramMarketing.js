@@ -164,7 +164,7 @@ export async function createTextCardBuffer(headline) {
 /**
  * Fetch the artwork and resize it to 1080x1080 (contain, black background).
  */
-async function resizeArtworkForInstagram(artworkUrl) {
+export async function resizeArtworkForInstagram(artworkUrl) {
   let imageBuffer;
   if (artworkUrl.startsWith('http')) {
     const res = await fetch(artworkUrl);
@@ -185,7 +185,7 @@ async function resizeArtworkForInstagram(artworkUrl) {
 
 // ─── GCS upload ──────────────────────────────────────────────────────────────
 
-async function uploadBufferToGCS(buffer, filename) {
+export async function uploadBufferToGCS(buffer, filename) {
   if (!process.env.GCS_BUCKET_NAME) throw new Error('GCS_BUCKET_NAME not configured');
 
   const storage = new Storage();

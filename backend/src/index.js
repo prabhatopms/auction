@@ -20,7 +20,7 @@ import ogRoutes from './routes/og.js';
 import { startScheduler, closeActiveLot, checkPaymentExpirations, createNewLot } from './scheduler.js';
 import { generateDailyArtwork, collectDailyData, generatePromptFromSignals, generateImageFromPrompt } from './artGenerator.js';
 import { notifyVendor, sendInvoiceEmail, sendShippingEmail } from './vendor/qikink.js';
-import { postLotToInstagram, createTextCardBuffer } from './instagramMarketing.js';
+import { postLotToInstagram, createTextCardBuffer, resizeArtworkForInstagram, uploadBufferToGCS } from './instagramMarketing.js';
 
 // Load .env from backend directory
 const __dir = dirname(fileURLToPath(import.meta.url));
@@ -665,6 +665,49 @@ app.get('/api/admin/instagram/preview-card', requireAdmin, async (req, res) => {
     res.send(buf);
   } catch (err) {
     console.error('[Admin] Instagram preview-card error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Dry-run: generate both Instagram images, upload to GCS, return URLs — no Instagram posting
+app.post('/api/admin/instagram/dry-run', requireAdmin, async (req, res) => {
+  try {
+    const { lotId, draftId } = req.body;
+
+    let postTarget;
+    if (draftId) {
+      const draft = await prisma.artworkDraft.findUnique({ where: { id: draftId }, include: { lot: true } });
+      if (!draft) return res.status(404).json({ error: 'Draft not found' });
+      const lotNumber = draft.lot?.lotNumber;
+      const resolvedUrl = draft.artworkUrl
+        ?? draft.lot?.artworkUrl
+        ?? (lotNumber && process.env.GCS_BUCKET_NAME
+            ? `https://storage.googleapis.com/${process.env.GCS_BUCKET_NAME}/artwork/lot-${lotNumber}.png`
+            : null);
+      postTarget = { lotNumber: lotNumber ?? 0, artworkUrl: resolvedUrl, artworkHeadline: draft.artworkHeadline ?? draft.lot?.artworkHeadline };
+    } else {
+      postTarget = lotId
+        ? await prisma.lot.findUnique({ where: { id: lotId } })
+        : await prisma.lot.findFirst({ where: { status: 'active' }, orderBy: { lotNumber: 'desc' } });
+      if (!postTarget) return res.status(404).json({ error: 'No lot found' });
+    }
+
+    let headline = postTarget.artworkHeadline ?? {};
+    if (typeof headline === 'string') { try { headline = JSON.parse(headline); } catch { headline = {}; } }
+
+    const [artworkBuffer, textCardBuffer] = await Promise.all([
+      resizeArtworkForInstagram(postTarget.artworkUrl),
+      createTextCardBuffer(headline),
+    ]);
+
+    const [artworkUrl, textCardUrl] = await Promise.all([
+      uploadBufferToGCS(artworkBuffer, `lot-${postTarget.lotNumber}-ig-artwork.jpg`),
+      uploadBufferToGCS(textCardBuffer, `lot-${postTarget.lotNumber}-ig-card.jpg`),
+    ]);
+
+    res.json({ ok: true, artworkUrl, textCardUrl });
+  } catch (err) {
+    console.error('[Admin] Instagram dry-run error:', err);
     res.status(500).json({ error: err.message });
   }
 });
