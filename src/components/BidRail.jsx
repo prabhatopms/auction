@@ -235,7 +235,7 @@ function Feed({ bids }) {
             </span>
             <div className="who">
               <div className="n">
-                {b.you ? 'You' : (b.userName ?? b.name)}
+                {b.you ? 'You' : (b.userName ?? b.name ?? '').split(' ')[0]}
                 {i === 0 && <span className="tag">High</span>}
               </div>
               <div className="tm">
