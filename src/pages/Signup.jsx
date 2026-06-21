@@ -269,7 +269,7 @@ export default function Signup() {
         {step === 'enter_otp' && (
           <div>
             <h2 className="auth-title">Verify Your Email</h2>
-            <p className="auth-sub">Enter the 6-digit OTP code sent to **{email.toLowerCase()}** to verify your account.</p>
+            <p className="auth-sub">Enter the 6-digit OTP code sent to **{email.toLowerCase()}** (check Spam too)! to verify your account.</p>
             
             <div className="auth-form">
               <div className="auth-field">

@@ -356,7 +356,7 @@ export default function Login() {
         {step === 'enter_otp' && (
           <div>
             <h2 className="auth-title">Verify Your Email</h2>
-            <p className="auth-sub">Enter the 6-digit OTP code sent to **{email.toLowerCase()}**.</p>
+            <p className="auth-sub">Enter the 6-digit OTP code sent to **{email.toLowerCase()}** (check Spam too)!.</p>
             
             <div className="auth-form">
               <div className="auth-field">
