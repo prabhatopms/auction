@@ -53,7 +53,7 @@ function buildTextCardSvg(headline) {
   let y = 105;
 
   // Brand name
-  nodes.push(`<text x="${MARGIN}" y="${y}" font-family="Arial,Helvetica,sans-serif" font-size="24" fill="#555555" letter-spacing="7" font-weight="bold">OXIDE ATELIER</text>`);
+  nodes.push(`<text x="${MARGIN}" y="${y}" font-family="Liberation Sans,Arial,Helvetica,sans-serif" font-size="24" fill="#555555" letter-spacing="7" font-weight="bold">OXIDE ATELIER</text>`);
   y += 28;
 
   // Brand underline
@@ -62,7 +62,7 @@ function buildTextCardSvg(headline) {
 
   // Title (large bold)
   for (const line of wrapText(title.toUpperCase(), 16).slice(0, 3)) {
-    nodes.push(`<text x="${MARGIN}" y="${y}" font-family="Arial,Helvetica,sans-serif" font-size="88" fill="#FFFFFF" font-weight="bold">${escapeXml(line)}</text>`);
+    nodes.push(`<text x="${MARGIN}" y="${y}" font-family="Liberation Sans,Arial,Helvetica,sans-serif" font-size="88" fill="#FFFFFF" font-weight="bold">${escapeXml(line)}</text>`);
     y += 100;
   }
   y += 12;
@@ -74,7 +74,7 @@ function buildTextCardSvg(headline) {
   // Essence
   if (essence) {
     for (const line of wrapText(essence, 46).slice(0, 4)) {
-      nodes.push(`<text x="${MARGIN}" y="${y}" font-family="Arial,Helvetica,sans-serif" font-size="30" fill="#CCCCCC">${escapeXml(line)}</text>`);
+      nodes.push(`<text x="${MARGIN}" y="${y}" font-family="Liberation Sans,Arial,Helvetica,sans-serif" font-size="30" fill="#CCCCCC">${escapeXml(line)}</text>`);
       y += 40;
     }
     y += 20;
@@ -82,11 +82,11 @@ function buildTextCardSvg(headline) {
 
   // Signals section
   if (signals.length > 0) {
-    nodes.push(`<text x="${MARGIN}" y="${y}" font-family="Arial,Helvetica,sans-serif" font-size="20" fill="#555555" letter-spacing="4">TODAY'S SIGNALS</text>`);
+    nodes.push(`<text x="${MARGIN}" y="${y}" font-family="Liberation Sans,Arial,Helvetica,sans-serif" font-size="20" fill="#555555" letter-spacing="4">TODAY'S SIGNALS</text>`);
     y += 36;
 
     for (const signal of signals.slice(0, 5)) {
-      nodes.push(`<text x="${MARGIN}" y="${y}" font-family="Arial,Helvetica,sans-serif" font-size="25" fill="#999999">◆  ${escapeXml(signal)}</text>`);
+      nodes.push(`<text x="${MARGIN}" y="${y}" font-family="Liberation Sans,Arial,Helvetica,sans-serif" font-size="25" fill="#999999">◆  ${escapeXml(signal)}</text>`);
       y += 36;
     }
     y += 12;
@@ -96,7 +96,7 @@ function buildTextCardSvg(headline) {
   if (statement && y < 850) {
     for (const line of wrapText(statement, 60).slice(0, 3)) {
       if (y >= 850) break;
-      nodes.push(`<text x="${MARGIN}" y="${y}" font-family="Arial,Helvetica,sans-serif" font-size="21" fill="#666666" font-style="italic">${escapeXml(line)}</text>`);
+      nodes.push(`<text x="${MARGIN}" y="${y}" font-family="Liberation Sans,Arial,Helvetica,sans-serif" font-size="21" fill="#666666" font-style="italic">${escapeXml(line)}</text>`);
       y += 30;
     }
   }
@@ -105,8 +105,8 @@ function buildTextCardSvg(headline) {
   nodes.push(`<line x1="${MARGIN}" y1="930" x2="${W - MARGIN}" y2="930" stroke="#1f1f1f" stroke-width="1"/>`);
 
   // CTA
-  nodes.push(`<text x="${MARGIN}" y="975" font-family="Arial,Helvetica,sans-serif" font-size="26" fill="#FFFFFF" font-weight="bold">Bid now → oxide.chemicalfarmers.com</text>`);
-  nodes.push(`<text x="${MARGIN}" y="1015" font-family="Arial,Helvetica,sans-serif" font-size="20" fill="#444444">One artwork. 18 hours. One winner.</text>`);
+  nodes.push(`<text x="${MARGIN}" y="975" font-family="Liberation Sans,Arial,Helvetica,sans-serif" font-size="26" fill="#FFFFFF" font-weight="bold">Bid now → oxide.chemicalfarmers.com</text>`);
+  nodes.push(`<text x="${MARGIN}" y="1015" font-family="Liberation Sans,Arial,Helvetica,sans-serif" font-size="20" fill="#444444">One artwork. 18 hours. One winner.</text>`);
 
   return `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
   <rect width="${W}" height="${H}" fill="#000000"/>

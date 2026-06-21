@@ -1,0 +1,8 @@
+[phases.setup]
+nixPkgs = ["nodejs_20", "liberation_ttf", "fontconfig"]
+
+[phases.build]
+cmds = ["npm install", "npx prisma generate"]
+
+[start]
+cmd = "npx prisma db push && node src/index.js"
