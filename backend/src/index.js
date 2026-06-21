@@ -646,7 +646,7 @@ app.get('/api/admin/instagram/preview-card', requireAdmin, async (req, res) => {
     if (draftId) {
       const draft = await prisma.artworkDraft.findUnique({ where: { id: draftId }, include: { lot: true } });
       if (!draft) return res.status(404).json({ error: 'Draft not found' });
-      headline = draft.artworkHeadline ?? draft.lot?.artworkHeadline ?? {};
+      headline = draft.artworkHeadline ?? {};
     } else {
       const lot = lotId
         ? await prisma.lot.findUnique({ where: { id: lotId } })
@@ -681,7 +681,7 @@ app.post('/api/admin/instagram/dry-run', requireAdmin, async (req, res) => {
       if (!draft.artworkUrl) return res.status(400).json({ error: 'This draft has no artwork URL — it may have failed to generate. Please regenerate it.' });
       const lotNumber = draft.lot?.lotNumber;
       console.log(`[Admin] Instagram dry-run: using draft ${draftId} artworkUrl=${draft.artworkUrl}`);
-      postTarget = { lotNumber: lotNumber ?? 0, artworkUrl: draft.artworkUrl, artworkHeadline: draft.artworkHeadline ?? draft.lot?.artworkHeadline };
+      postTarget = { lotNumber: lotNumber ?? 0, artworkUrl: draft.artworkUrl, artworkHeadline: draft.artworkHeadline };
     } else {
       postTarget = lotId
         ? await prisma.lot.findUnique({ where: { id: lotId } })
@@ -728,7 +728,7 @@ app.post('/api/admin/instagram/post-now', requireAdmin, async (req, res) => {
         lotNumber: lotNumber ?? 0,
         startingBid: draft.lot?.startingBid ?? 0,
         artworkUrl: draft.artworkUrl,
-        artworkHeadline: draft.artworkHeadline ?? draft.lot?.artworkHeadline,
+        artworkHeadline: draft.artworkHeadline,
       };
     } else {
       postTarget = lotId
