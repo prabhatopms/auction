@@ -160,6 +160,12 @@ function buildTextCardSvg(headline, fontBase64 = null) {
 }
 
 async function createTextCardBuffer(headline) {
+  // Give fontconfig a minimal valid config so librsvg can initialize its font
+  // engine — without this, the embedded @font-face data URI is silently ignored
+  // and all text renders as boxes on Linux containers (Railway/Docker).
+  if (!process.env.FONTCONFIG_FILE) {
+    process.env.FONTCONFIG_FILE = join(__dir, 'fonts.conf');
+  }
   const fontBase64 = await getFontBase64();
   const svg = buildTextCardSvg(headline, fontBase64);
   return await sharp(Buffer.from(svg)).jpeg({ quality: 95 }).toBuffer();
