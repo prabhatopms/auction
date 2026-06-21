@@ -10,20 +10,23 @@ import { Resvg } from '@resvg/resvg-js';
 const __dir = dirname(fileURLToPath(import.meta.url));
 const IG_API = 'https://graph.instagram.com/v25.0';
 
-// ─── Font loader (in-memory, no disk writes, no fontconfig) ──────────────────
+// ─── Font loader (bundled TTF — no CDN dependency, no fontconfig) ─────────────
+
+const FONT_REGULAR = join(__dir, 'fonts', 'Roboto-Regular.ttf');
+const FONT_BOLD    = join(__dir, 'fonts', 'Roboto-Bold.ttf');
 
 let _fonts = null;
 async function ensureFonts() {
   if (_fonts) return _fonts;
   const [regular, bold] = await Promise.all([
-    fetch('https://cdn.jsdelivr.net/npm/@fontsource/roboto@5.1.0/files/roboto-latin-400-normal.woff').then(r => r.arrayBuffer()),
-    fetch('https://cdn.jsdelivr.net/npm/@fontsource/roboto@5.1.0/files/roboto-latin-700-normal.woff').then(r => r.arrayBuffer()),
+    fs.readFile(FONT_REGULAR),
+    fs.readFile(FONT_BOLD),
   ]);
   _fonts = [
-    { name: 'Roboto', data: regular, weight: 400, style: 'normal' },
-    { name: 'Roboto', data: bold,    weight: 700, style: 'normal' },
+    { name: 'Roboto', data: regular.buffer.slice(regular.byteOffset, regular.byteOffset + regular.byteLength), weight: 400, style: 'normal' },
+    { name: 'Roboto', data: bold.buffer.slice(bold.byteOffset, bold.byteOffset + bold.byteLength),    weight: 700, style: 'normal' },
   ];
-  console.log('[Instagram] Roboto fonts loaded.');
+  console.log('[Instagram] Roboto TTF fonts loaded from disk.');
   return _fonts;
 }
 
@@ -157,7 +160,13 @@ export async function createTextCardBuffer(headline) {
   const fonts = await ensureFonts();
   const element = buildTextCardElement(headline);
   const svg = await satori(element, { width: 1080, height: 1080, fonts });
-  const png = new Resvg(svg, { fitTo: { mode: 'originalSize' } }).render().asPng();
+  const png = new Resvg(svg, {
+    fitTo: { mode: 'originalSize' },
+    font: {
+      fontFiles: [FONT_REGULAR, FONT_BOLD],
+      loadSystemFonts: false,
+    },
+  }).render().asPng();
   return await sharp(Buffer.from(png)).jpeg({ quality: 95 }).toBuffer();
 }
 
