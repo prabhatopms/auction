@@ -104,25 +104,34 @@ export function Hero({ lot, currentBid, bids, bump, lotClosed, getCountdownTarge
       <div className="hero-spot" />
       <div className="hero-body">
         <div className="live-row">
-          <span className="live-badge"><span className="dot" /> Live now</span>
-          <span className="hero-lotno">Drop #{parseInt(lot.lotNo, 10)}</span>
-          <span className="hero-watching"><span className="dot" /> {lot.watching} watching</span>
+          {lotClosed
+            ? <span className="live-badge live-badge--closed">Drop #{parseInt(lot.lotNo, 10)}</span>
+            : <>
+                <span className="live-badge"><span className="dot" /> Live now</span>
+                <span className="hero-lotno">Drop #{parseInt(lot.lotNo, 10)}</span>
+                <span className="hero-watching"><span className="dot" /> {lot.watching} watching</span>
+              </>
+          }
         </div>
         <h1 className="hero-title">{lot.title}</h1>
         <p className="hero-edition">Unique piece · 1 of 1 · never reprinted</p>
 
         <div className="hero-stats">
-          <div className="hstat">
-            <div className="k">{bids === 0 ? 'Starting bid' : 'Current bid'}</div>
-            <div className={'v num' + (bump ? ' bump' : '')}>
-              <span className="cur">₹</span>
-              <span>{currentBid.toLocaleString('en-IN')}</span>
-            </div>
-          </div>
-          <div className="hstat">
-            <div className="k">Bids</div>
-            <div className="v num">{bids}</div>
-          </div>
+          {!lotClosed && (
+            <>
+              <div className="hstat">
+                <div className="k">{bids === 0 ? 'Starting bid' : 'Current bid'}</div>
+                <div className={'v num' + (bump ? ' bump' : '')}>
+                  <span className="cur">₹</span>
+                  <span>{currentBid.toLocaleString('en-IN')}</span>
+                </div>
+              </div>
+              <div className="hstat">
+                <div className="k">Bids</div>
+                <div className="v num">{bids}</div>
+              </div>
+            </>
+          )}
           <div className="hstat">
             <div className="k">{lotClosed ? 'Bidding opens in' : 'Bidding closes in'}</div>
             <div className="v cd num">
@@ -134,7 +143,10 @@ export function Hero({ lot, currentBid, bids, bump, lotClosed, getCountdownTarge
         </div>
 
         <div className="hero-cta">
-          <a className="btn-primary" href="/">Enter live room <span aria-hidden="true">→</span></a>
+          {lotClosed
+            ? <a className="btn-primary" href="/">View current lot <span aria-hidden="true">→</span></a>
+            : <a className="btn-primary" href="/">Enter live room <span aria-hidden="true">→</span></a>
+          }
         </div>
       </div>
 

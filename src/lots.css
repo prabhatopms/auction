@@ -96,6 +96,11 @@
   animation: lots-blink 1.4s infinite;
 }
 @keyframes lots-blink { 0%,100%{opacity:1;} 50%{opacity:0.25;} }
+.lots-hero .live-badge--closed {
+  color: var(--txt-mute);
+  border-color: rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.05);
+}
 .lots-hero .hero-lotno {
   font-family: var(--font-display);
   font-size: 11px;

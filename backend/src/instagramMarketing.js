@@ -8,76 +8,7 @@ import { GoogleGenAI } from '@google/genai';
 const __dir = dirname(fileURLToPath(import.meta.url));
 const IG_API = 'https://graph.instagram.com/v25.0';
 
-// Download Roboto WOFF (not WOFF2) to disk so it can be loaded via file://
-// URL in @font-face. WOFF2 fails because librsvg's FreeType has no Brotli
-// decoder; WOFF uses zlib which FreeType 2.5+ handles natively. A file://
-// URL avoids the data-URI parsing layer entirely.
-const FONT_DIR = '/tmp/oxide-fonts';
-let _fontPaths = null;
-async function ensureFontsOnDisk() {
-  if (_fontPaths) return _fontPaths;
-  try { await fs.mkdir(FONT_DIR, { recursive: true }); } catch {}
-
-  const download = async (urls, dest) => {
-    for (const url of urls) {
-      try {
-        const res = await fetch(url);
-        if (!res.ok) continue;
-        await fs.writeFile(dest, Buffer.from(await res.arrayBuffer()));
-        return dest;
-      } catch {}
-    }
-    return null;
-  };
-
-  const [regular, bold] = await Promise.all([
-    download(
-      ['https://cdn.jsdelivr.net/npm/@fontsource/roboto@5.1.0/files/roboto-latin-400-normal.woff'],
-      `${FONT_DIR}/roboto-regular.woff`
-    ),
-    download(
-      ['https://cdn.jsdelivr.net/npm/@fontsource/roboto@5.1.0/files/roboto-latin-700-normal.woff'],
-      `${FONT_DIR}/roboto-bold.woff`
-    ),
-  ]);
-
-  if (regular && bold) {
-    console.log('[Instagram] Roboto WOFF fonts saved to /tmp/oxide-fonts/');
-    _fontPaths = { regular, bold };
-  } else {
-    console.warn('[Instagram] Roboto WOFF download failed — text may render as boxes');
-    _fontPaths = { regular: null, bold: null };
-  }
-  return _fontPaths;
-}
-
-// ─── Text helpers ────────────────────────────────────────────────────────────
-
-function escapeXml(str) {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
-function wrapText(text, maxChars) {
-  const words = String(text).split(' ');
-  const lines = [];
-  let current = '';
-  for (const word of words) {
-    const test = current ? `${current} ${word}` : word;
-    if (test.length > maxChars) {
-      if (current) lines.push(current);
-      current = word;
-    } else {
-      current = test;
-    }
-  }
-  if (current) lines.push(current);
-  return lines;
-}
+// ─── Signal parser ────────────────────────────────────────────────────────────
 
 function parseSignal(sig) {
   const sourcePatterns = [
@@ -107,141 +38,62 @@ function parseSignal(sig) {
   return { text, source };
 }
 
-// ─── Image creation ───────────────────────────────────────────────────────────
+// ─── Text card via Imagen 4 ───────────────────────────────────────────────────
 
-function buildTextCardSvg(headline, fontPaths = {}) {
-  const W = 1080, H = 1080;
-  const MARGIN = 80;
-  const GOLD = '#c9a84c';
-  const FNAME = fontPaths.regular ? 'CardFont' : 'sans-serif';
+async function createTextCardBuffer(headline) {
+  if (!process.env.GOOGLE_CLOUD_PROJECT && !process.env.GEMINI_API_KEY) {
+    throw new Error('Imagen 4 requires GOOGLE_CLOUD_PROJECT or GEMINI_API_KEY');
+  }
+
+  const ai = process.env.GEMINI_API_KEY
+    ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
+    : new GoogleGenAI({
+        vertexai: true,
+        project: process.env.GOOGLE_CLOUD_PROJECT,
+        location: process.env.GOOGLE_CLOUD_LOCATION || 'us-central1',
+      });
 
   const title = headline.title || 'Untitled';
   const signals = (headline.data_signals_used || headline.data_signals_used_summarized || []).slice(0, 5);
 
-  // Use file:// URLs so librsvg/FreeType reads the WOFF file directly from
-  // disk — this avoids the data-URI parsing layer where WOFF2 failed.
-  const fontStyles = [
-    fontPaths.regular
-      ? `@font-face{font-family:'CardFont';font-weight:400;src:url('file://${fontPaths.regular}') format('woff');}` : '',
-    fontPaths.bold
-      ? `@font-face{font-family:'CardFont';font-weight:700;src:url('file://${fontPaths.bold}') format('woff');}` : '',
-  ].join('');
-  const defs = fontStyles ? `<defs><style>${fontStyles}</style></defs>` : '';
+  const signalLines = signals.map(sig => {
+    const { text, source } = parseSignal(sig);
+    return source ? `— ${text} [${source}]` : `— ${text}`;
+  }).join('\n');
 
-  // ── helper: render a signal row, returns nodes and height consumed ──
-  function signalNodes(signal, startY) {
-    const { text: sigText, source } = parseSignal(signal);
-    const full = source ? `${sigText} [${source}]` : sigText;
-    const lines = wrapText(full, 50).slice(0, 2);
-    const out = [];
-    let cy = startY;
+  const prompt = `A luxury art auction Instagram text card, square 1:1 format, pure black background.
 
-    // gold bullet
-    out.push(`<text x="${MARGIN}" y="${cy}" font-family="${FNAME}" font-size="22" fill="${GOLD}">—</text>`);
+Centered layout from top to bottom:
+- Gold L-shaped corner bracket decorations in all four corners (color #c9a84c)
+- Thin horizontal gold line near the top edge
+- Large bold white uppercase sans-serif title: "${title.toUpperCase()}"
+- Short gold horizontal rule under the title
+- Small gold uppercase tracking label: "TODAY'S SIGNALS"
+- Thin dark separator line
+- The following signal lines in light gray text, each preceded by a gold em-dash:
+${signalLines}
+- Thin horizontal gold line near the bottom edge
 
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      const hasSource = source && line.includes(`[${source}]`);
-      if (hasSource) {
-        const idx = line.lastIndexOf(`[${source}]`);
-        const before = line.slice(0, idx);
-        out.push(`<text x="${MARGIN + 28}" y="${cy}" font-family="${FNAME}" font-size="26" fill="#b0b0b0">${escapeXml(before)}<tspan fill="#555555" font-style="italic">[${escapeXml(source)}]</tspan></text>`);
-      } else {
-        out.push(`<text x="${MARGIN + 28}" y="${cy}" font-family="${FNAME}" font-size="26" fill="#b0b0b0">${escapeXml(line)}</text>`);
-      }
-      cy += 36;
-    }
-    cy += 10; // gap between signals
-    return { nodes: out, height: cy - startY };
-  }
+Aesthetic: luxury auction house, editorial, minimalist, sophisticated. Gold accents #c9a84c. Crisp white typography on near-black #080808 background. No imagery or illustration — pure typographic layout. High contrast, clean.`;
 
-  // ── corner bracket helper ──
-  function corner(x, y, dx, dy) {
-    const L = 52, T = 2;
-    return [
-      `<rect x="${x}" y="${y}" width="${dx * L}" height="${T}" fill="${GOLD}"/>`,
-      `<rect x="${x + (dx < 0 ? dx * L : 0)}" y="${y}" width="${T}" height="${dy * L}" fill="${GOLD}"/>`,
-    ];
-  }
+  console.log('[Instagram] Generating text card with Imagen 4...');
+  const response = await ai.models.generateImages({
+    model: 'imagen-4.0-generate-001',
+    prompt,
+    config: {
+      numberOfImages: 1,
+      aspectRatio: '1:1',
+      outputMimeType: 'image/jpeg',
+    },
+  });
 
-  // ── pre-compute signal block height ──
-  let signalBlockH = 0;
-  const tempSignalNodes = [];
-  for (const sig of signals) {
-    const r = signalNodes(sig, 0);
-    signalBlockH += r.height;
-    tempSignalNodes.push(r);
-  }
-
-  // ── vertical layout: center the content block ──
-  const TITLE_LINES = wrapText(title.toUpperCase(), 14).slice(0, 3);
-  const titleH = TITLE_LINES.length * 110;
-  const headerH = 80;  // gold line + gap
-  const labelH = 56;   // "TODAY'S SIGNALS" + gap
-  const contentH = headerH + titleH + 24 + labelH + signalBlockH;
-  const startY = Math.max(80, Math.floor((H - contentH) / 2));
-
-  const nodes = [];
-
-  // ── corner brackets ──
-  nodes.push(...corner(MARGIN - 2, MARGIN - 2, 1, 1));
-  nodes.push(...corner(W - MARGIN + 2, MARGIN - 2, -1, 1));
-  nodes.push(...corner(MARGIN - 2, H - MARGIN + 2, 1, -1));
-  nodes.push(...corner(W - MARGIN + 2, H - MARGIN + 2, -1, -1));
-
-  let y = startY;
-
-  // ── top gold accent line ──
-  nodes.push(`<line x1="${MARGIN}" y1="${y}" x2="${W - MARGIN}" y2="${y}" stroke="${GOLD}" stroke-width="1" opacity="0.5"/>`);
-  y += 44;
-
-  // ── title ──
-  for (const line of TITLE_LINES) {
-    nodes.push(`<text x="${MARGIN}" y="${y}" font-family="${FNAME}" font-weight="bold" font-size="104" fill="#FFFFFF" letter-spacing="-2">${escapeXml(line)}</text>`);
-    y += 110;
-  }
-  y += 10;
-
-  // ── thin gold rule under title ──
-  nodes.push(`<line x1="${MARGIN}" y1="${y}" x2="${MARGIN + 160}" y2="${y}" stroke="${GOLD}" stroke-width="2"/>`);
-  y += 40;
-
-  // ── "TODAY'S SIGNALS" label ──
-  nodes.push(`<text x="${MARGIN}" y="${y}" font-family="${FNAME}" font-size="16" fill="${GOLD}" letter-spacing="6">TODAY&#39;S SIGNALS</text>`);
-  y += 16;
-  // thin full-width rule under label
-  nodes.push(`<line x1="${MARGIN}" y1="${y}" x2="${W - MARGIN}" y2="${y}" stroke="#222222" stroke-width="1"/>`);
-  y += 30;
-
-  // ── signals ──
-  for (const sig of signals) {
-    const r = signalNodes(sig, y);
-    nodes.push(...r.nodes);
-    y += r.height;
-  }
-
-  // ── bottom gold accent line ──
-  y = H - MARGIN + 2 - 54;
-  nodes.push(`<line x1="${MARGIN}" y1="${y}" x2="${W - MARGIN}" y2="${y}" stroke="${GOLD}" stroke-width="1" opacity="0.5"/>`);
-
-  return `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
-  ${defs}
-  <rect width="${W}" height="${H}" fill="#080808"/>
-  ${nodes.join('\n  ')}
-</svg>`;
-}
-
-async function createTextCardBuffer(headline) {
-  // Must set FONTCONFIG_FILE before first sharp SVG render so librsvg
-  // initialises fontconfig with our config (which points to /tmp/oxide-fonts).
-  if (!process.env.FONTCONFIG_FILE) {
-    process.env.FONTCONFIG_FILE = join(__dir, 'fonts.conf');
-  }
-  // Write Roboto WOFF to /tmp/oxide-fonts BEFORE sharp renders the SVG.
-  // The file:// URLs in @font-face are resolved by librsvg at render time.
-  const fontPaths = await ensureFontsOnDisk();
-  const svg = buildTextCardSvg(headline, fontPaths);
-  return await sharp(Buffer.from(svg)).jpeg({ quality: 95 }).toBuffer();
+  const imageBytes = response?.generatedImages?.[0]?.image?.imageBytes;
+  if (!imageBytes) throw new Error('Imagen 4 returned no image bytes for text card');
+  console.log('[Instagram] Text card generated successfully via Imagen 4.');
+  return await sharp(Buffer.from(imageBytes, 'base64'))
+    .resize(1080, 1080, { fit: 'cover' })
+    .jpeg({ quality: 95 })
+    .toBuffer();
 }
 
 /**
