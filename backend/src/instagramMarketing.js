@@ -8,27 +8,29 @@ import { GoogleGenAI } from '@google/genai';
 const __dir = dirname(fileURLToPath(import.meta.url));
 const IG_API = 'https://graph.instagram.com/v25.0';
 
-// Cache Liberation Sans as base64 once per process so the SVG renderer
-// never needs system fonts (fontconfig is unreliable in Nix/Railway containers).
-let _fontB64Cache = null;
-async function getFontBase64() {
-  if (_fontB64Cache) return _fontB64Cache;
-  const urls = [
-    'https://cdn.jsdelivr.net/npm/roboto-fontface@0.10.0/fonts/roboto/Roboto-Regular.woff2',
-    'https://cdn.jsdelivr.net/npm/@fontsource/roboto@5.1.1/files/roboto-latin-400-normal.woff2',
-  ];
-  for (const url of urls) {
-    try {
-      const res = await fetch(url);
-      if (!res.ok) continue;
-      const buf = Buffer.from(await res.arrayBuffer());
-      _fontB64Cache = buf.toString('base64');
-      console.log('[Instagram] Roboto font loaded for SVG embedding.');
-      return _fontB64Cache;
-    } catch (_) {}
-  }
-  console.warn('[Instagram] Could not fetch Roboto — SVG text may render as boxes on Linux.');
-  return null;
+// Fetch and cache Roboto Regular + Bold as base64 so the SVG renderer never
+// needs system fonts (fontconfig is unreliable in Nix/Railway containers).
+let _fonts = null;
+async function getFonts() {
+  if (_fonts) return _fonts;
+  const fetch64 = async (urls) => {
+    for (const url of urls) {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) continue;
+        return Buffer.from(await res.arrayBuffer()).toString('base64');
+      } catch (_) {}
+    }
+    return null;
+  };
+  const [regular, bold] = await Promise.all([
+    fetch64(['https://cdn.jsdelivr.net/npm/roboto-fontface@0.10.0/fonts/roboto/Roboto-Regular.woff2']),
+    fetch64(['https://cdn.jsdelivr.net/npm/roboto-fontface@0.10.0/fonts/roboto/Roboto-Bold.woff2']),
+  ]);
+  if (regular) console.log('[Instagram] Roboto fonts loaded for SVG embedding.');
+  else console.warn('[Instagram] Could not fetch Roboto — SVG text may render as boxes on Linux.');
+  _fonts = { regular, bold };
+  return _fonts;
 }
 
 // ─── Text helpers ────────────────────────────────────────────────────────────
@@ -89,85 +91,134 @@ function parseSignal(sig) {
 
 // ─── Image creation ───────────────────────────────────────────────────────────
 
-/**
- * Build an SVG text card (1080x1080) with title, essence, signals, and CTA.
- */
-function buildTextCardSvg(headline, fontBase64 = null) {
+function buildTextCardSvg(headline, fonts = {}) {
   const W = 1080, H = 1080;
   const MARGIN = 80;
-  const FONT = fontBase64 ? 'CardFont' : 'Liberation Sans,Arial,Helvetica,sans-serif';
-  const title = headline.title || 'Untitled';
-  const signals = headline.data_signals_used || headline.data_signals_used_summarized || [];
+  const GOLD = '#c9a84c';
+  const FONT_R = fonts.regular ? 'CardFont' : 'Arial,sans-serif';
+  const FONT_B = fonts.bold ? 'CardFontBold' : FONT_R;
 
-  const fontDefs = fontBase64 ? `<defs><style>@font-face{font-family:'CardFont';src:url('data:font/woff2;base64,${fontBase64}');}</style></defs>` : '';
+  const title = headline.title || 'Untitled';
+  const signals = (headline.data_signals_used || headline.data_signals_used_summarized || []).slice(0, 5);
+
+  // ── @font-face defs ──
+  const fontStyles = [
+    fonts.regular ? `@font-face{font-family:'CardFont';font-weight:400;src:url('data:font/woff2;base64,${fonts.regular}');}` : '',
+    fonts.bold    ? `@font-face{font-family:'CardFontBold';font-weight:700;src:url('data:font/woff2;base64,${fonts.bold}');}` : '',
+  ].join('');
+  const defs = fontStyles
+    ? `<defs><style>${fontStyles}</style></defs>`
+    : '';
+
+  // ── helper: render a signal row, returns nodes and height consumed ──
+  function signalNodes(signal, startY) {
+    const { text: sigText, source } = parseSignal(signal);
+    const full = source ? `${sigText} [${source}]` : sigText;
+    const lines = wrapText(full, 50).slice(0, 2);
+    const out = [];
+    let cy = startY;
+
+    // gold bullet
+    out.push(`<text x="${MARGIN}" y="${cy}" font-family="${FONT_R}" font-size="22" fill="${GOLD}">—</text>`);
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const hasSource = source && line.includes(`[${source}]`);
+      if (hasSource) {
+        const idx = line.lastIndexOf(`[${source}]`);
+        const before = line.slice(0, idx);
+        out.push(`<text x="${MARGIN + 28}" y="${cy}" font-family="${FONT_R}" font-size="26" fill="#b0b0b0">${escapeXml(before)}<tspan fill="#555555" font-style="italic">[${escapeXml(source)}]</tspan></text>`);
+      } else {
+        out.push(`<text x="${MARGIN + 28}" y="${cy}" font-family="${FONT_R}" font-size="26" fill="#b0b0b0">${escapeXml(line)}</text>`);
+      }
+      cy += 36;
+    }
+    cy += 10; // gap between signals
+    return { nodes: out, height: cy - startY };
+  }
+
+  // ── corner bracket helper ──
+  function corner(x, y, dx, dy) {
+    const L = 52, T = 2;
+    return [
+      `<rect x="${x}" y="${y}" width="${dx * L}" height="${T}" fill="${GOLD}"/>`,
+      `<rect x="${x + (dx < 0 ? dx * L : 0)}" y="${y}" width="${T}" height="${dy * L}" fill="${GOLD}"/>`,
+    ];
+  }
+
+  // ── pre-compute signal block height ──
+  let signalBlockH = 0;
+  const tempSignalNodes = [];
+  for (const sig of signals) {
+    const r = signalNodes(sig, 0);
+    signalBlockH += r.height;
+    tempSignalNodes.push(r);
+  }
+
+  // ── vertical layout: center the content block ──
+  const TITLE_LINES = wrapText(title.toUpperCase(), 14).slice(0, 3);
+  const titleH = TITLE_LINES.length * 110;
+  const headerH = 80;  // gold line + gap
+  const labelH = 56;   // "TODAY'S SIGNALS" + gap
+  const contentH = headerH + titleH + 24 + labelH + signalBlockH;
+  const startY = Math.max(80, Math.floor((H - contentH) / 2));
 
   const nodes = [];
-  let y = 120;
 
-  // Title (large bold)
-  for (const line of wrapText(title.toUpperCase(), 16).slice(0, 3)) {
-    nodes.push(`<text x="${MARGIN}" y="${y}" font-family="${FONT}" font-size="88" fill="#FFFFFF" font-weight="bold">${escapeXml(line)}</text>`);
-    y += 100;
+  // ── corner brackets ──
+  nodes.push(...corner(MARGIN - 2, MARGIN - 2, 1, 1));
+  nodes.push(...corner(W - MARGIN + 2, MARGIN - 2, -1, 1));
+  nodes.push(...corner(MARGIN - 2, H - MARGIN + 2, 1, -1));
+  nodes.push(...corner(W - MARGIN + 2, H - MARGIN + 2, -1, -1));
+
+  let y = startY;
+
+  // ── top gold accent line ──
+  nodes.push(`<line x1="${MARGIN}" y1="${y}" x2="${W - MARGIN}" y2="${y}" stroke="${GOLD}" stroke-width="1" opacity="0.5"/>`);
+  y += 44;
+
+  // ── title ──
+  for (const line of TITLE_LINES) {
+    nodes.push(`<text x="${MARGIN}" y="${y}" font-family="${FONT_B}" font-size="104" fill="#FFFFFF" letter-spacing="-2">${escapeXml(line)}</text>`);
+    y += 110;
   }
-  y += 12;
+  y += 10;
 
-  // Divider
-  nodes.push(`<line x1="${MARGIN}" y1="${y}" x2="${W - MARGIN}" y2="${y}" stroke="#1f1f1f" stroke-width="1"/>`);
-  y += 36;
+  // ── thin gold rule under title ──
+  nodes.push(`<line x1="${MARGIN}" y1="${y}" x2="${MARGIN + 160}" y2="${y}" stroke="${GOLD}" stroke-width="2"/>`);
+  y += 40;
 
-  // Signals section
-  if (signals.length > 0) {
-    nodes.push(`<text x="${MARGIN}" y="${y}" font-family="${FONT}" font-size="20" fill="#555555" letter-spacing="4">TODAY'S SIGNALS</text>`);
-    y += 36;
+  // ── "TODAY'S SIGNALS" label ──
+  nodes.push(`<text x="${MARGIN}" y="${y}" font-family="${FONT_R}" font-size="16" fill="${GOLD}" letter-spacing="6">TODAY'S SIGNALS</text>`);
+  y += 16;
+  // thin full-width rule under label
+  nodes.push(`<line x1="${MARGIN}" y1="${y}" x2="${W - MARGIN}" y2="${y}" stroke="#222222" stroke-width="1"/>`);
+  y += 30;
 
-    for (const signal of signals.slice(0, 5)) {
-      const { text: sigText, source } = parseSignal(signal);
-      const full = source ? `${sigText} [${source}]` : sigText;
-      const lines = wrapText(full, 52).slice(0, 2);
-      const firstLine = lines[0] || '';
-      const secondLine = lines[1] || '';
-
-      if (source && firstLine.includes(`[${source}]`)) {
-        // Source fits on first line — dim just the [Source] part via tspan
-        const idx = firstLine.lastIndexOf(`[${source}]`);
-        const before = firstLine.slice(0, idx);
-        nodes.push(`<text x="${MARGIN}" y="${y}" font-family="${FONT}" font-size="24" fill="#999999">${escapeXml(before)}<tspan fill="#555555" font-style="italic">[${escapeXml(source)}]</tspan></text>`);
-      } else {
-        nodes.push(`<text x="${MARGIN}" y="${y}" font-family="${FONT}" font-size="24" fill="#999999">${escapeXml(firstLine)}</text>`);
-      }
-      y += 32;
-
-      if (secondLine) {
-        if (source && secondLine.includes(`[${source}]`)) {
-          const idx = secondLine.lastIndexOf(`[${source}]`);
-          const before = secondLine.slice(0, idx);
-          nodes.push(`<text x="${MARGIN}" y="${y}" font-family="${FONT}" font-size="24" fill="#999999">${escapeXml(before)}<tspan fill="#555555" font-style="italic">[${escapeXml(source)}]</tspan></text>`);
-        } else {
-          nodes.push(`<text x="${MARGIN}" y="${y}" font-family="${FONT}" font-size="24" fill="#999999">${escapeXml(secondLine)}</text>`);
-        }
-        y += 32;
-      }
-      y += 10;
-    }
-    y += 8;
+  // ── signals ──
+  for (const sig of signals) {
+    const r = signalNodes(sig, y);
+    nodes.push(...r.nodes);
+    y += r.height;
   }
+
+  // ── bottom gold accent line ──
+  y = H - MARGIN + 2 - 54;
+  nodes.push(`<line x1="${MARGIN}" y1="${y}" x2="${W - MARGIN}" y2="${y}" stroke="${GOLD}" stroke-width="1" opacity="0.5"/>`);
 
   return `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
-  ${fontDefs}
-  <rect width="${W}" height="${H}" fill="#000000"/>
+  ${defs}
+  <rect width="${W}" height="${H}" fill="#080808"/>
   ${nodes.join('\n  ')}
 </svg>`;
 }
 
 async function createTextCardBuffer(headline) {
-  // Give fontconfig a minimal valid config so librsvg can initialize its font
-  // engine — without this, the embedded @font-face data URI is silently ignored
-  // and all text renders as boxes on Linux containers (Railway/Docker).
   if (!process.env.FONTCONFIG_FILE) {
     process.env.FONTCONFIG_FILE = join(__dir, 'fonts.conf');
   }
-  const fontBase64 = await getFontBase64();
-  const svg = buildTextCardSvg(headline, fontBase64);
+  const fonts = await getFonts();
+  const svg = buildTextCardSvg(headline, fonts);
   return await sharp(Buffer.from(svg)).jpeg({ quality: 95 }).toBuffer();
 }
 
