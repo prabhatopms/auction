@@ -246,11 +246,11 @@ async function fetchWikipediaOnThisDay(date) {
   return [];
 }
 
-export const collectDailyData = async (dateString) => {
+export const collectDailyData = async (dateString, extraExcludedSignals = []) => {
   console.log('[Data Collector] Gathering all signals for date:', dateString);
 
-  // 1. Fetch yesterday's signals from the database to exclude
-  let excludedSignals = [];
+  // 1. Fetch signals already used (previous lot + any extra passed in) to exclude
+  let excludedSignals = [...extraExcludedSignals];
   try {
     const lastLot = await prisma.lot.findFirst({
       where: { lotNumber: { gt: 0 } },
@@ -258,7 +258,7 @@ export const collectDailyData = async (dateString) => {
     });
     if (lastLot?.artworkHeadline && lastLot.artworkHeadline.startsWith('{')) {
       const parsed = JSON.parse(lastLot.artworkHeadline);
-      excludedSignals = parsed.data_signals_used || [];
+      excludedSignals = [...excludedSignals, ...(parsed.data_signals_used || [])];
     }
   } catch (err) {
     console.error('[Data Collector] Failed to load previous lot signals:', err.message);
@@ -391,8 +391,29 @@ export async function generateDailyArtwork(lotNumber) {
   const formatter = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' });
   const dateString = formatter.format(today); // returns YYYY-MM-DD
 
-  // 1. Collect all signals
-  const collectedData = await collectDailyData(dateString);
+  // 1. Collect signals already used in existing drafts for the active lot so
+  //    each new draft gets a fresh set of signals rather than repeating them.
+  let usedSignals = [];
+  try {
+    const activeLot = await prisma.lot.findFirst({ where: { status: 'active' } });
+    if (activeLot) {
+      const existingDrafts = await prisma.artworkDraft.findMany({
+        where: { lotId: activeLot.id },
+        select: { artworkHeadline: true },
+      });
+      for (const draft of existingDrafts) {
+        try {
+          const parsed = JSON.parse(draft.artworkHeadline);
+          usedSignals = [...usedSignals, ...(parsed.data_signals_used || [])];
+        } catch {}
+      }
+    }
+  } catch (err) {
+    console.error('[Art Generator] Failed to load existing draft signals:', err.message);
+  }
+
+  // 2. Collect all signals (excluding previous lot's + existing drafts' signals)
+  const collectedData = await collectDailyData(dateString, usedSignals);
 
   // Default values in case Gemini fails
   let title = `Untitled (Drift No. ${lotNumber})`;
