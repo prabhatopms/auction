@@ -8,6 +8,29 @@ import { GoogleGenAI } from '@google/genai';
 const __dir = dirname(fileURLToPath(import.meta.url));
 const IG_API = 'https://graph.instagram.com/v25.0';
 
+// Cache Liberation Sans as base64 once per process so the SVG renderer
+// never needs system fonts (fontconfig is unreliable in Nix/Railway containers).
+let _fontB64Cache = null;
+async function getFontBase64() {
+  if (_fontB64Cache) return _fontB64Cache;
+  const urls = [
+    'https://cdn.jsdelivr.net/npm/roboto-fontface@0.10.0/fonts/roboto/Roboto-Regular.woff2',
+    'https://cdn.jsdelivr.net/npm/@fontsource/roboto@5.1.1/files/roboto-latin-400-normal.woff2',
+  ];
+  for (const url of urls) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) continue;
+      const buf = Buffer.from(await res.arrayBuffer());
+      _fontB64Cache = buf.toString('base64');
+      console.log('[Instagram] Roboto font loaded for SVG embedding.');
+      return _fontB64Cache;
+    } catch (_) {}
+  }
+  console.warn('[Instagram] Could not fetch Roboto — SVG text may render as boxes on Linux.');
+  return null;
+}
+
 // ─── Text helpers ────────────────────────────────────────────────────────────
 
 function escapeXml(str) {
@@ -69,18 +92,21 @@ function parseSignal(sig) {
 /**
  * Build an SVG text card (1080x1080) with title, essence, signals, and CTA.
  */
-function buildTextCardSvg(headline) {
+function buildTextCardSvg(headline, fontBase64 = null) {
   const W = 1080, H = 1080;
   const MARGIN = 80;
+  const FONT = fontBase64 ? 'CardFont' : 'Liberation Sans,Arial,Helvetica,sans-serif';
   const title = headline.title || 'Untitled';
   const signals = headline.data_signals_used || headline.data_signals_used_summarized || [];
+
+  const fontDefs = fontBase64 ? `<defs><style>@font-face{font-family:'CardFont';src:url('data:font/woff2;base64,${fontBase64}');}</style></defs>` : '';
 
   const nodes = [];
   let y = 120;
 
   // Title (large bold)
   for (const line of wrapText(title.toUpperCase(), 16).slice(0, 3)) {
-    nodes.push(`<text x="${MARGIN}" y="${y}" font-family="Liberation Sans,Arial,Helvetica,sans-serif" font-size="88" fill="#FFFFFF" font-weight="bold">${escapeXml(line)}</text>`);
+    nodes.push(`<text x="${MARGIN}" y="${y}" font-family="${FONT}" font-size="88" fill="#FFFFFF" font-weight="bold">${escapeXml(line)}</text>`);
     y += 100;
   }
   y += 12;
@@ -91,7 +117,7 @@ function buildTextCardSvg(headline) {
 
   // Signals section
   if (signals.length > 0) {
-    nodes.push(`<text x="${MARGIN}" y="${y}" font-family="Liberation Sans,Arial,Helvetica,sans-serif" font-size="20" fill="#555555" letter-spacing="4">TODAY'S SIGNALS</text>`);
+    nodes.push(`<text x="${MARGIN}" y="${y}" font-family="${FONT}" font-size="20" fill="#555555" letter-spacing="4">TODAY'S SIGNALS</text>`);
     y += 36;
 
     for (const signal of signals.slice(0, 5)) {
@@ -105,9 +131,9 @@ function buildTextCardSvg(headline) {
         // Source fits on first line — dim just the [Source] part via tspan
         const idx = firstLine.lastIndexOf(`[${source}]`);
         const before = firstLine.slice(0, idx);
-        nodes.push(`<text x="${MARGIN}" y="${y}" font-family="Liberation Sans,Arial,Helvetica,sans-serif" font-size="24" fill="#999999">${escapeXml(before)}<tspan fill="#555555" font-style="italic">[${escapeXml(source)}]</tspan></text>`);
+        nodes.push(`<text x="${MARGIN}" y="${y}" font-family="${FONT}" font-size="24" fill="#999999">${escapeXml(before)}<tspan fill="#555555" font-style="italic">[${escapeXml(source)}]</tspan></text>`);
       } else {
-        nodes.push(`<text x="${MARGIN}" y="${y}" font-family="Liberation Sans,Arial,Helvetica,sans-serif" font-size="24" fill="#999999">${escapeXml(firstLine)}</text>`);
+        nodes.push(`<text x="${MARGIN}" y="${y}" font-family="${FONT}" font-size="24" fill="#999999">${escapeXml(firstLine)}</text>`);
       }
       y += 32;
 
@@ -115,9 +141,9 @@ function buildTextCardSvg(headline) {
         if (source && secondLine.includes(`[${source}]`)) {
           const idx = secondLine.lastIndexOf(`[${source}]`);
           const before = secondLine.slice(0, idx);
-          nodes.push(`<text x="${MARGIN}" y="${y}" font-family="Liberation Sans,Arial,Helvetica,sans-serif" font-size="24" fill="#999999">${escapeXml(before)}<tspan fill="#555555" font-style="italic">[${escapeXml(source)}]</tspan></text>`);
+          nodes.push(`<text x="${MARGIN}" y="${y}" font-family="${FONT}" font-size="24" fill="#999999">${escapeXml(before)}<tspan fill="#555555" font-style="italic">[${escapeXml(source)}]</tspan></text>`);
         } else {
-          nodes.push(`<text x="${MARGIN}" y="${y}" font-family="Liberation Sans,Arial,Helvetica,sans-serif" font-size="24" fill="#999999">${escapeXml(secondLine)}</text>`);
+          nodes.push(`<text x="${MARGIN}" y="${y}" font-family="${FONT}" font-size="24" fill="#999999">${escapeXml(secondLine)}</text>`);
         }
         y += 32;
       }
@@ -127,14 +153,15 @@ function buildTextCardSvg(headline) {
   }
 
   return `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
+  ${fontDefs}
   <rect width="${W}" height="${H}" fill="#000000"/>
   ${nodes.join('\n  ')}
 </svg>`;
 }
 
 async function createTextCardBuffer(headline) {
-  const svg = buildTextCardSvg(headline);
-  // Instagram requires JPEG — convert from SVG render
+  const fontBase64 = await getFontBase64();
+  const svg = buildTextCardSvg(headline, fontBase64);
   return await sharp(Buffer.from(svg)).jpeg({ quality: 95 }).toBuffer();
 }
 
