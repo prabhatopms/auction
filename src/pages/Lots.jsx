@@ -165,7 +165,7 @@ export default function Lots() {
         setApiLot(data.lot);
         setCurrentBid(data.currentBid);
         setLiveBids(data.bids?.length ?? 0);
-        const closed = data.lot?.status === 'closed' || checkBiddingClosed();
+        const closed = data.lot?.status === 'closed' || (data.lot?.status !== 'active' && checkBiddingClosed());
         setLotClosed(closed);
       })
       .catch(() => null);
