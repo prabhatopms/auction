@@ -124,7 +124,7 @@ export function Hero({ lot, currentBid, bids, bump, lotClosed, getCountdownTarge
             <div className="v num">{bids}</div>
           </div>
           <div className="hstat">
-            <div className="k">Ends in</div>
+            <div className="k">{lotClosed ? 'Next auction starts in' : 'Ends in'}</div>
             <div className="v cd num">
               {cd.h > 0 && <><span>{pad(cd.h)}</span><span className="u">h</span></>}
               <span>{pad(cd.m)}</span><span className="u">m</span>
