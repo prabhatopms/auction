@@ -94,7 +94,7 @@ export default function HowItWorks() {
             <p>
               When the 18-hour auction ends, the highest bidder wins the lot. 
               The winner has a strict <strong>2-hour payment window</strong>. 
-              You can log in to this website to make your payment, and you will also receive an email notification (check Spam too)! with a checkout link. 
+              You can log in to this website to make your payment, and you will also receive an email notification with a checkout link. 
               If unpaid, the payment opportunity is passed to the 2nd highest bidder for 2 hours, and then the 3rd.
             </p>
           </div>
