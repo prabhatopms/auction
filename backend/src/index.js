@@ -678,13 +678,10 @@ app.post('/api/admin/instagram/dry-run', requireAdmin, async (req, res) => {
     if (draftId) {
       const draft = await prisma.artworkDraft.findUnique({ where: { id: draftId }, include: { lot: true } });
       if (!draft) return res.status(404).json({ error: 'Draft not found' });
+      if (!draft.artworkUrl) return res.status(400).json({ error: 'This draft has no artwork URL — it may have failed to generate. Please regenerate it.' });
       const lotNumber = draft.lot?.lotNumber;
-      const resolvedUrl = draft.artworkUrl
-        ?? draft.lot?.artworkUrl
-        ?? (lotNumber && process.env.GCS_BUCKET_NAME
-            ? `https://storage.googleapis.com/${process.env.GCS_BUCKET_NAME}/artwork/lot-${lotNumber}.png`
-            : null);
-      postTarget = { lotNumber: lotNumber ?? 0, artworkUrl: resolvedUrl, artworkHeadline: draft.artworkHeadline ?? draft.lot?.artworkHeadline };
+      console.log(`[Admin] Instagram dry-run: using draft ${draftId} artworkUrl=${draft.artworkUrl}`);
+      postTarget = { lotNumber: lotNumber ?? 0, artworkUrl: draft.artworkUrl, artworkHeadline: draft.artworkHeadline ?? draft.lot?.artworkHeadline };
     } else {
       postTarget = lotId
         ? await prisma.lot.findUnique({ where: { id: lotId } })
@@ -724,17 +721,13 @@ app.post('/api/admin/instagram/post-now', requireAdmin, async (req, res) => {
         include: { lot: true },
       });
       if (!draft) return res.status(404).json({ error: 'Draft not found' });
-      // Resolve artwork URL: draft → lot → constructed GCS path (DB can lag behind GCS)
+      if (!draft.artworkUrl) return res.status(400).json({ error: 'This draft has no artwork URL — it may have failed to generate. Please regenerate it.' });
       const lotNumber = draft.lot?.lotNumber;
-      const resolvedUrl = draft.artworkUrl
-        ?? draft.lot?.artworkUrl
-        ?? (lotNumber && process.env.GCS_BUCKET_NAME
-            ? `https://storage.googleapis.com/${process.env.GCS_BUCKET_NAME}/artwork/lot-${lotNumber}.png`
-            : null);
+      console.log(`[Admin] Instagram post-now: using draft ${draftId} artworkUrl=${draft.artworkUrl}`);
       postTarget = {
         lotNumber: lotNumber ?? 0,
         startingBid: draft.lot?.startingBid ?? 0,
-        artworkUrl: resolvedUrl,
+        artworkUrl: draft.artworkUrl,
         artworkHeadline: draft.artworkHeadline ?? draft.lot?.artworkHeadline,
       };
     } else {
