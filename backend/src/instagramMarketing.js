@@ -8,29 +8,47 @@ import { GoogleGenAI } from '@google/genai';
 const __dir = dirname(fileURLToPath(import.meta.url));
 const IG_API = 'https://graph.instagram.com/v25.0';
 
-// Fetch and cache Roboto Regular + Bold as base64 so the SVG renderer never
-// needs system fonts (fontconfig is unreliable in Nix/Railway containers).
-let _fonts = null;
-async function getFonts() {
-  if (_fonts) return _fonts;
-  const fetch64 = async (urls) => {
+// Download Roboto WOFF (not WOFF2) to disk so it can be loaded via file://
+// URL in @font-face. WOFF2 fails because librsvg's FreeType has no Brotli
+// decoder; WOFF uses zlib which FreeType 2.5+ handles natively. A file://
+// URL avoids the data-URI parsing layer entirely.
+const FONT_DIR = '/tmp/oxide-fonts';
+let _fontPaths = null;
+async function ensureFontsOnDisk() {
+  if (_fontPaths) return _fontPaths;
+  try { await fs.mkdir(FONT_DIR, { recursive: true }); } catch {}
+
+  const download = async (urls, dest) => {
     for (const url of urls) {
       try {
         const res = await fetch(url);
         if (!res.ok) continue;
-        return Buffer.from(await res.arrayBuffer()).toString('base64');
-      } catch (_) {}
+        await fs.writeFile(dest, Buffer.from(await res.arrayBuffer()));
+        return dest;
+      } catch {}
     }
     return null;
   };
+
   const [regular, bold] = await Promise.all([
-    fetch64(['https://cdn.jsdelivr.net/npm/roboto-fontface@0.10.0/fonts/roboto/Roboto-Regular.woff2']),
-    fetch64(['https://cdn.jsdelivr.net/npm/roboto-fontface@0.10.0/fonts/roboto/Roboto-Bold.woff2']),
+    download(
+      ['https://cdn.jsdelivr.net/npm/@fontsource/roboto@5.1.0/files/roboto-latin-400-normal.woff'],
+      `${FONT_DIR}/roboto-regular.woff`
+    ),
+    download(
+      ['https://cdn.jsdelivr.net/npm/@fontsource/roboto@5.1.0/files/roboto-latin-700-normal.woff'],
+      `${FONT_DIR}/roboto-bold.woff`
+    ),
   ]);
-  if (regular) console.log('[Instagram] Roboto fonts loaded for SVG embedding.');
-  else console.warn('[Instagram] Could not fetch Roboto — SVG text may render as boxes on Linux.');
-  _fonts = { regular, bold };
-  return _fonts;
+
+  if (regular && bold) {
+    console.log('[Instagram] Roboto WOFF fonts saved to /tmp/oxide-fonts/');
+    _fontPaths = { regular, bold };
+  } else {
+    console.warn('[Instagram] Roboto WOFF download failed — text may render as boxes');
+    _fontPaths = { regular: null, bold: null };
+  }
+  return _fontPaths;
 }
 
 // ─── Text helpers ────────────────────────────────────────────────────────────
@@ -91,24 +109,24 @@ function parseSignal(sig) {
 
 // ─── Image creation ───────────────────────────────────────────────────────────
 
-function buildTextCardSvg(headline, fonts = {}) {
+function buildTextCardSvg(headline, fontPaths = {}) {
   const W = 1080, H = 1080;
   const MARGIN = 80;
   const GOLD = '#c9a84c';
-  const FONT_R = fonts.regular ? 'CardFont' : 'Arial,sans-serif';
-  const FONT_B = fonts.bold ? 'CardFontBold' : FONT_R;
+  const FNAME = fontPaths.regular ? 'CardFont' : 'sans-serif';
 
   const title = headline.title || 'Untitled';
   const signals = (headline.data_signals_used || headline.data_signals_used_summarized || []).slice(0, 5);
 
-  // ── @font-face defs ──
+  // Use file:// URLs so librsvg/FreeType reads the WOFF file directly from
+  // disk — this avoids the data-URI parsing layer where WOFF2 failed.
   const fontStyles = [
-    fonts.regular ? `@font-face{font-family:'CardFont';font-weight:400;src:url('data:font/woff2;base64,${fonts.regular}');}` : '',
-    fonts.bold    ? `@font-face{font-family:'CardFontBold';font-weight:700;src:url('data:font/woff2;base64,${fonts.bold}');}` : '',
+    fontPaths.regular
+      ? `@font-face{font-family:'CardFont';font-weight:400;src:url('file://${fontPaths.regular}') format('woff');}` : '',
+    fontPaths.bold
+      ? `@font-face{font-family:'CardFont';font-weight:700;src:url('file://${fontPaths.bold}') format('woff');}` : '',
   ].join('');
-  const defs = fontStyles
-    ? `<defs><style>${fontStyles}</style></defs>`
-    : '';
+  const defs = fontStyles ? `<defs><style>${fontStyles}</style></defs>` : '';
 
   // ── helper: render a signal row, returns nodes and height consumed ──
   function signalNodes(signal, startY) {
@@ -119,7 +137,7 @@ function buildTextCardSvg(headline, fonts = {}) {
     let cy = startY;
 
     // gold bullet
-    out.push(`<text x="${MARGIN}" y="${cy}" font-family="${FONT_R}" font-size="22" fill="${GOLD}">—</text>`);
+    out.push(`<text x="${MARGIN}" y="${cy}" font-family="${FNAME}" font-size="22" fill="${GOLD}">—</text>`);
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
@@ -127,9 +145,9 @@ function buildTextCardSvg(headline, fonts = {}) {
       if (hasSource) {
         const idx = line.lastIndexOf(`[${source}]`);
         const before = line.slice(0, idx);
-        out.push(`<text x="${MARGIN + 28}" y="${cy}" font-family="${FONT_R}" font-size="26" fill="#b0b0b0">${escapeXml(before)}<tspan fill="#555555" font-style="italic">[${escapeXml(source)}]</tspan></text>`);
+        out.push(`<text x="${MARGIN + 28}" y="${cy}" font-family="${FNAME}" font-size="26" fill="#b0b0b0">${escapeXml(before)}<tspan fill="#555555" font-style="italic">[${escapeXml(source)}]</tspan></text>`);
       } else {
-        out.push(`<text x="${MARGIN + 28}" y="${cy}" font-family="${FONT_R}" font-size="26" fill="#b0b0b0">${escapeXml(line)}</text>`);
+        out.push(`<text x="${MARGIN + 28}" y="${cy}" font-family="${FNAME}" font-size="26" fill="#b0b0b0">${escapeXml(line)}</text>`);
       }
       cy += 36;
     }
@@ -179,7 +197,7 @@ function buildTextCardSvg(headline, fonts = {}) {
 
   // ── title ──
   for (const line of TITLE_LINES) {
-    nodes.push(`<text x="${MARGIN}" y="${y}" font-family="${FONT_B}" font-size="104" fill="#FFFFFF" letter-spacing="-2">${escapeXml(line)}</text>`);
+    nodes.push(`<text x="${MARGIN}" y="${y}" font-family="${FNAME}" font-weight="bold" font-size="104" fill="#FFFFFF" letter-spacing="-2">${escapeXml(line)}</text>`);
     y += 110;
   }
   y += 10;
@@ -189,7 +207,7 @@ function buildTextCardSvg(headline, fonts = {}) {
   y += 40;
 
   // ── "TODAY'S SIGNALS" label ──
-  nodes.push(`<text x="${MARGIN}" y="${y}" font-family="${FONT_R}" font-size="16" fill="${GOLD}" letter-spacing="6">TODAY'S SIGNALS</text>`);
+  nodes.push(`<text x="${MARGIN}" y="${y}" font-family="${FNAME}" font-size="16" fill="${GOLD}" letter-spacing="6">TODAY&#39;S SIGNALS</text>`);
   y += 16;
   // thin full-width rule under label
   nodes.push(`<line x1="${MARGIN}" y1="${y}" x2="${W - MARGIN}" y2="${y}" stroke="#222222" stroke-width="1"/>`);
@@ -214,11 +232,15 @@ function buildTextCardSvg(headline, fonts = {}) {
 }
 
 async function createTextCardBuffer(headline) {
+  // Must set FONTCONFIG_FILE before first sharp SVG render so librsvg
+  // initialises fontconfig with our config (which points to /tmp/oxide-fonts).
   if (!process.env.FONTCONFIG_FILE) {
     process.env.FONTCONFIG_FILE = join(__dir, 'fonts.conf');
   }
-  const fonts = await getFonts();
-  const svg = buildTextCardSvg(headline, fonts);
+  // Write Roboto WOFF to /tmp/oxide-fonts BEFORE sharp renders the SVG.
+  // The file:// URLs in @font-face are resolved by librsvg at render time.
+  const fontPaths = await ensureFontsOnDisk();
+  const svg = buildTextCardSvg(headline, fontPaths);
   return await sharp(Buffer.from(svg)).jpeg({ quality: 95 }).toBuffer();
 }
 
