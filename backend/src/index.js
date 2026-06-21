@@ -20,7 +20,7 @@ import ogRoutes from './routes/og.js';
 import { startScheduler, closeActiveLot, checkPaymentExpirations, createNewLot } from './scheduler.js';
 import { generateDailyArtwork, collectDailyData, generatePromptFromSignals, generateImageFromPrompt } from './artGenerator.js';
 import { notifyVendor, sendInvoiceEmail, sendShippingEmail } from './vendor/qikink.js';
-import { postLotToInstagram } from './instagramMarketing.js';
+import { postLotToInstagram, createTextCardBuffer } from './instagramMarketing.js';
 
 // Load .env from backend directory
 const __dir = dirname(fileURLToPath(import.meta.url));
@@ -633,6 +633,39 @@ app.post('/api/admin/orders/:id/resend-vendor', async (req, res) => {
   } catch (err) {
     console.error('[Resend vendor] error:', err);
     res.status(500).json({ error: 'Failed to resend vendor notification' });
+  }
+});
+
+// Preview the Instagram text card as a JPEG — no posting, browser-friendly
+// Usage: GET /api/admin/instagram/preview-card?draftId=X  or ?lotId=X  or no params (active lot)
+app.get('/api/admin/instagram/preview-card', requireAdmin, async (req, res) => {
+  try {
+    const { lotId, draftId } = req.query;
+
+    let headline = {};
+    if (draftId) {
+      const draft = await prisma.artworkDraft.findUnique({ where: { id: draftId }, include: { lot: true } });
+      if (!draft) return res.status(404).json({ error: 'Draft not found' });
+      headline = draft.artworkHeadline ?? draft.lot?.artworkHeadline ?? {};
+    } else {
+      const lot = lotId
+        ? await prisma.lot.findUnique({ where: { id: lotId } })
+        : await prisma.lot.findFirst({ where: { status: 'active' }, orderBy: { lotNumber: 'desc' } });
+      if (!lot) return res.status(404).json({ error: 'No lot found' });
+      headline = lot.artworkHeadline ?? {};
+    }
+
+    if (typeof headline === 'string') {
+      try { headline = JSON.parse(headline); } catch { headline = {}; }
+    }
+
+    const buf = await createTextCardBuffer(headline);
+    res.set('Content-Type', 'image/jpeg');
+    res.set('Cache-Control', 'no-store');
+    res.send(buf);
+  } catch (err) {
+    console.error('[Admin] Instagram preview-card error:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 
