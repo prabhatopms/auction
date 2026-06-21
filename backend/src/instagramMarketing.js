@@ -36,6 +36,34 @@ function wrapText(text, maxChars) {
   return lines;
 }
 
+function parseSignal(sig) {
+  const sourcePatterns = [
+    { pat: /^UPI Weird News:\s*/i, src: 'UPI Weird News' },
+    { pat: /^Oddity Central:\s*/i, src: 'Oddity Central' },
+    { pat: /^Wikipedia Top Search:\s*/i, src: 'Wikipedia Top Search' },
+    { pat: /^Wikipedia On this Day:\s*/i, src: 'Wikipedia On this Day' },
+    { pat: /^Good News Network:\s*/i, src: 'Good News Network' },
+    { pat: /^Optimist Daily:\s*/i, src: 'Optimist Daily' },
+    { pat: /^Polymarket Trending:\s*/i, src: 'Polymarket Trending' },
+    { pat: /^Top Song:\s*/i, src: 'Top Song' },
+    { pat: /^Google News:\s*/i, src: 'Google News' },
+  ];
+
+  let text = String(sig).trim();
+  let source = '';
+
+  for (const { pat, src } of sourcePatterns) {
+    if (pat.test(text)) {
+      source = src;
+      text = text.replace(pat, '');
+      break;
+    }
+  }
+
+  if (text.length > 0) text = text.charAt(0).toUpperCase() + text.slice(1);
+  return { text, source };
+}
+
 // ─── Image creation ───────────────────────────────────────────────────────────
 
 /**
@@ -45,20 +73,10 @@ function buildTextCardSvg(headline) {
   const W = 1080, H = 1080;
   const MARGIN = 80;
   const title = headline.title || 'Untitled';
-  const essence = headline.essence || '';
-  const signals = headline.data_signals_used_summarized || [];
-  const statement = headline.interpretive_statement || '';
+  const signals = headline.data_signals_used || headline.data_signals_used_summarized || [];
 
   const nodes = [];
-  let y = 105;
-
-  // Brand name
-  nodes.push(`<text x="${MARGIN}" y="${y}" font-family="Liberation Sans,Arial,Helvetica,sans-serif" font-size="24" fill="#555555" letter-spacing="7" font-weight="bold">OXIDE ATELIER</text>`);
-  y += 28;
-
-  // Brand underline
-  nodes.push(`<line x1="${MARGIN}" y1="${y}" x2="560" y2="${y}" stroke="#2a2a2a" stroke-width="1"/>`);
-  y += 62;
+  let y = 120;
 
   // Title (large bold)
   for (const line of wrapText(title.toUpperCase(), 16).slice(0, 3)) {
@@ -71,42 +89,42 @@ function buildTextCardSvg(headline) {
   nodes.push(`<line x1="${MARGIN}" y1="${y}" x2="${W - MARGIN}" y2="${y}" stroke="#1f1f1f" stroke-width="1"/>`);
   y += 36;
 
-  // Essence
-  if (essence) {
-    for (const line of wrapText(essence, 46).slice(0, 4)) {
-      nodes.push(`<text x="${MARGIN}" y="${y}" font-family="Liberation Sans,Arial,Helvetica,sans-serif" font-size="30" fill="#CCCCCC">${escapeXml(line)}</text>`);
-      y += 40;
-    }
-    y += 20;
-  }
-
   // Signals section
   if (signals.length > 0) {
     nodes.push(`<text x="${MARGIN}" y="${y}" font-family="Liberation Sans,Arial,Helvetica,sans-serif" font-size="20" fill="#555555" letter-spacing="4">TODAY'S SIGNALS</text>`);
     y += 36;
 
     for (const signal of signals.slice(0, 5)) {
-      nodes.push(`<text x="${MARGIN}" y="${y}" font-family="Liberation Sans,Arial,Helvetica,sans-serif" font-size="25" fill="#999999">◆  ${escapeXml(signal)}</text>`);
-      y += 36;
+      const { text: sigText, source } = parseSignal(signal);
+      const full = source ? `${sigText} [${source}]` : sigText;
+      const lines = wrapText(full, 52).slice(0, 2);
+      const firstLine = lines[0] || '';
+      const secondLine = lines[1] || '';
+
+      if (source && firstLine.includes(`[${source}]`)) {
+        // Source fits on first line — dim just the [Source] part via tspan
+        const idx = firstLine.lastIndexOf(`[${source}]`);
+        const before = firstLine.slice(0, idx);
+        nodes.push(`<text x="${MARGIN}" y="${y}" font-family="Liberation Sans,Arial,Helvetica,sans-serif" font-size="24" fill="#999999">${escapeXml(before)}<tspan fill="#555555" font-style="italic">[${escapeXml(source)}]</tspan></text>`);
+      } else {
+        nodes.push(`<text x="${MARGIN}" y="${y}" font-family="Liberation Sans,Arial,Helvetica,sans-serif" font-size="24" fill="#999999">${escapeXml(firstLine)}</text>`);
+      }
+      y += 32;
+
+      if (secondLine) {
+        if (source && secondLine.includes(`[${source}]`)) {
+          const idx = secondLine.lastIndexOf(`[${source}]`);
+          const before = secondLine.slice(0, idx);
+          nodes.push(`<text x="${MARGIN}" y="${y}" font-family="Liberation Sans,Arial,Helvetica,sans-serif" font-size="24" fill="#999999">${escapeXml(before)}<tspan fill="#555555" font-style="italic">[${escapeXml(source)}]</tspan></text>`);
+        } else {
+          nodes.push(`<text x="${MARGIN}" y="${y}" font-family="Liberation Sans,Arial,Helvetica,sans-serif" font-size="24" fill="#999999">${escapeXml(secondLine)}</text>`);
+        }
+        y += 32;
+      }
+      y += 10;
     }
-    y += 12;
+    y += 8;
   }
-
-  // Interpretive statement (small italic, if space allows)
-  if (statement && y < 850) {
-    for (const line of wrapText(statement, 60).slice(0, 3)) {
-      if (y >= 850) break;
-      nodes.push(`<text x="${MARGIN}" y="${y}" font-family="Liberation Sans,Arial,Helvetica,sans-serif" font-size="21" fill="#666666" font-style="italic">${escapeXml(line)}</text>`);
-      y += 30;
-    }
-  }
-
-  // Bottom divider
-  nodes.push(`<line x1="${MARGIN}" y1="930" x2="${W - MARGIN}" y2="930" stroke="#1f1f1f" stroke-width="1"/>`);
-
-  // CTA
-  nodes.push(`<text x="${MARGIN}" y="975" font-family="Liberation Sans,Arial,Helvetica,sans-serif" font-size="26" fill="#FFFFFF" font-weight="bold">Bid now → oxide.chemicalfarmers.com</text>`);
-  nodes.push(`<text x="${MARGIN}" y="1015" font-family="Liberation Sans,Arial,Helvetica,sans-serif" font-size="20" fill="#444444">One artwork. 18 hours. One winner.</text>`);
 
   return `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
   <rect width="${W}" height="${H}" fill="#000000"/>
