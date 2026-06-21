@@ -206,6 +206,7 @@ async function createNewLot(lotNumber, preloadedArt = null) {
   console.log(`[Scheduler] Lot #${lotNumber} created — bidding open for 18 hours.`);
   const totalLots = await prisma.lot.count({ where: { lotNumber: { gt: 0 } } });
   getIo()?.emit('lot:new', { lot: { ...lot, totalLots } });
+
   return lot;
 }
 

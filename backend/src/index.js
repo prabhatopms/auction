@@ -20,6 +20,7 @@ import ogRoutes from './routes/og.js';
 import { startScheduler, closeActiveLot, checkPaymentExpirations, createNewLot } from './scheduler.js';
 import { generateDailyArtwork, collectDailyData, generatePromptFromSignals, generateImageFromPrompt } from './artGenerator.js';
 import { notifyVendor, sendInvoiceEmail, sendShippingEmail } from './vendor/qikink.js';
+import { postLotToInstagram } from './instagramMarketing.js';
 
 // Load .env from backend directory
 const __dir = dirname(fileURLToPath(import.meta.url));
@@ -632,6 +633,47 @@ app.post('/api/admin/orders/:id/resend-vendor', async (req, res) => {
   } catch (err) {
     console.error('[Resend vendor] error:', err);
     res.status(500).json({ error: 'Failed to resend vendor notification' });
+  }
+});
+
+// Manually trigger an Instagram post for a specific draft, lot, or the active lot
+app.post('/api/admin/instagram/post-now', requireAdmin, async (req, res) => {
+  try {
+    const { lotId, draftId } = req.body;
+
+    let postTarget;
+    if (draftId) {
+      const draft = await prisma.artworkDraft.findUnique({
+        where: { id: draftId },
+        include: { lot: true },
+      });
+      if (!draft) return res.status(404).json({ error: 'Draft not found' });
+      // Resolve artwork URL: draft → lot → constructed GCS path (DB can lag behind GCS)
+      const lotNumber = draft.lot?.lotNumber;
+      const resolvedUrl = draft.artworkUrl
+        ?? draft.lot?.artworkUrl
+        ?? (lotNumber && process.env.GCS_BUCKET_NAME
+            ? `https://storage.googleapis.com/${process.env.GCS_BUCKET_NAME}/artwork/lot-${lotNumber}.png`
+            : null);
+      postTarget = {
+        lotNumber: lotNumber ?? 0,
+        startingBid: draft.lot?.startingBid ?? 0,
+        artworkUrl: resolvedUrl,
+        artworkHeadline: draft.artworkHeadline ?? draft.lot?.artworkHeadline,
+      };
+    } else {
+      postTarget = lotId
+        ? await prisma.lot.findUnique({ where: { id: lotId } })
+        : await prisma.lot.findFirst({ where: { status: 'active' }, orderBy: { lotNumber: 'desc' } });
+      if (!postTarget) return res.status(404).json({ error: 'No lot found' });
+    }
+
+    const postId = await postLotToInstagram(postTarget);
+    if (!postId) return res.status(500).json({ error: 'Instagram post failed — check server logs' });
+    res.json({ ok: true, postId });
+  } catch (err) {
+    console.error('[Admin] Instagram post-now error:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 

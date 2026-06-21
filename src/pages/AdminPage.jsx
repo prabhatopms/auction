@@ -325,6 +325,8 @@ export default function AdminPage() {
   const [artworkDrafts, setArtworkDrafts] = useState([]);
   const [generatingDraft, setGeneratingDraft] = useState(false);
   const [artworkMsg, setArtworkMsg] = useState(null);
+  const [igPosting, setIgPosting] = useState(new Set());
+  const [igPosted, setIgPosted] = useState(new Set());
   const [sessionHistory, setSessionHistory] = useState([]);
   const [expandedSession, setExpandedSession] = useState(null);
   const [sessionDrafts, setSessionDrafts] = useState({});
@@ -641,6 +643,25 @@ export default function AdminPage() {
     }
   };
 
+  const handlePostToInstagram = async (draft) => {
+    setIgPosting(prev => new Set([...prev, draft.id]));
+    try {
+      const r = await fetch(`${API}/api/admin/instagram/post-now`, {
+        method: 'POST',
+        headers: authHeader(),
+        body: JSON.stringify({ draftId: draft.id }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Failed');
+      setIgPosted(prev => new Set([...prev, draft.id]));
+      notify('Posted to Instagram!');
+    } catch (err) {
+      notify(`Instagram post failed: ${err.message}`);
+    } finally {
+      setIgPosting(prev => { const n = new Set(prev); n.delete(draft.id); return n; });
+    }
+  };
+
   const toggleLotVisibility = async (lotId) => {
     try {
       const r = await fetch(`${API}/api/admin/toggle-lot-visibility`, {
@@ -943,6 +964,17 @@ export default function AdminPage() {
                               {isSelectedForNew ? '✓ Selected' : 'Select for Bidding'}
                             </button>
                           )}
+                          <button
+                            onClick={() => handlePostToInstagram(draft)}
+                            disabled={igPosting.has(draft.id) || igPosted.has(draft.id)}
+                            style={{ width: '100%', fontSize: 11, padding: '6px 0', borderRadius: 5, marginTop: 6,
+                              border: igPosted.has(draft.id) ? '1px solid rgba(100,200,100,0.4)' : '1px solid rgba(225,48,108,0.35)',
+                              background: igPosted.has(draft.id) ? 'rgba(100,200,100,0.08)' : 'rgba(225,48,108,0.08)',
+                              color: igPosted.has(draft.id) ? '#6dc86d' : '#e1306c',
+                              cursor: igPosting.has(draft.id) || igPosted.has(draft.id) ? 'default' : 'pointer',
+                              fontWeight: 600, letterSpacing: '0.04em', transition: 'all 0.15s' }}>
+                            {igPosting.has(draft.id) ? 'Posting…' : igPosted.has(draft.id) ? '✓ Posted' : '📸 Instagram'}
+                          </button>
                         </div>
                       </div>
                     );
@@ -1100,6 +1132,20 @@ export default function AdminPage() {
                                             {isSelectedForNew ? '✓ Selected' : 'Select'}
                                           </button>
                                         )}
+                                        <button
+                                          onClick={() => handlePostToInstagram(draft)}
+                                          disabled={igPosting.has(draft.id) || igPosted.has(draft.id)}
+                                          style={{
+                                            width: '100%', fontSize: 9, padding: '3px 0', marginTop: 4, borderRadius: 4,
+                                            border: igPosted.has(draft.id) ? '1px solid rgba(100,200,100,0.4)' : '1px solid rgba(225,48,108,0.3)',
+                                            background: igPosted.has(draft.id) ? 'rgba(100,200,100,0.08)' : 'rgba(225,48,108,0.07)',
+                                            color: igPosted.has(draft.id) ? '#6dc86d' : '#e1306c',
+                                            cursor: igPosting.has(draft.id) || igPosted.has(draft.id) ? 'default' : 'pointer',
+                                            fontWeight: 600, transition: 'all 0.15s'
+                                          }}
+                                        >
+                                          {igPosting.has(draft.id) ? 'Posting…' : igPosted.has(draft.id) ? '✓ Posted' : '📸 Instagram'}
+                                        </button>
                                       </div>
                                     </div>
                                   );
