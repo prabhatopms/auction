@@ -681,7 +681,7 @@ app.post('/api/admin/instagram/dry-run', requireAdmin, async (req, res) => {
       if (!draft.artworkUrl) return res.status(400).json({ error: 'This draft has no artwork URL — it may have failed to generate. Please regenerate it.' });
       const lotNumber = draft.lot?.lotNumber;
       console.log(`[Admin] Instagram dry-run: using draft ${draftId} artworkUrl=${draft.artworkUrl}`);
-      postTarget = { lotNumber: lotNumber ?? 0, artworkUrl: draft.artworkUrl, artworkHeadline: draft.artworkHeadline };
+      postTarget = { lotNumber: lotNumber ?? 0, artworkUrl: draft.artworkUrl, artworkHeadline: draft.artworkHeadline, _draftId: draftId };
     } else {
       postTarget = lotId
         ? await prisma.lot.findUnique({ where: { id: lotId } })
@@ -692,14 +692,15 @@ app.post('/api/admin/instagram/dry-run', requireAdmin, async (req, res) => {
     let headline = postTarget.artworkHeadline ?? {};
     if (typeof headline === 'string') { try { headline = JSON.parse(headline); } catch { headline = {}; } }
 
+    const slug = postTarget._draftId ? postTarget._draftId.slice(-10) : `lot-${postTarget.lotNumber}`;
     const [artworkBuffer, textCardBuffer] = await Promise.all([
       resizeArtworkForInstagram(postTarget.artworkUrl),
       createTextCardBuffer(headline),
     ]);
 
     const [artworkUrl, textCardUrl] = await Promise.all([
-      uploadBufferToGCS(artworkBuffer, `lot-${postTarget.lotNumber}-ig-artwork.jpg`),
-      uploadBufferToGCS(textCardBuffer, `lot-${postTarget.lotNumber}-ig-card.jpg`),
+      uploadBufferToGCS(artworkBuffer, `${slug}-ig-artwork.jpg`),
+      uploadBufferToGCS(textCardBuffer, `${slug}-ig-card.jpg`),
     ]);
 
     res.json({ ok: true, artworkUrl, textCardUrl });
@@ -729,6 +730,7 @@ app.post('/api/admin/instagram/post-now', requireAdmin, async (req, res) => {
         startingBid: draft.lot?.startingBid ?? 0,
         artworkUrl: draft.artworkUrl,
         artworkHeadline: draft.artworkHeadline,
+        _draftId: draftId,
       };
     } else {
       postTarget = lotId

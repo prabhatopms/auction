@@ -393,11 +393,12 @@ export async function postLotToInstagram(lot) {
       createTextCardBuffer(headline),
     ]);
 
-    // Upload to GCS in parallel
+    // Upload to GCS in parallel — keyed by draft ID so each draft gets its own file
     console.log('[Instagram] Uploading to GCS...');
+    const slug = lot._draftId ? lot._draftId.slice(-10) : `lot-${lot.lotNumber}-${Date.now()}`;
     const [artworkUrl, textCardUrl] = await Promise.all([
-      uploadBufferToGCS(artworkBuffer, `lot-${lot.lotNumber}-ig-artwork.jpg`),
-      uploadBufferToGCS(textCardBuffer, `lot-${lot.lotNumber}-ig-card.jpg`),
+      uploadBufferToGCS(artworkBuffer, `${slug}-ig-artwork.jpg`),
+      uploadBufferToGCS(textCardBuffer, `${slug}-ig-card.jpg`),
     ]);
 
     // Generate caption
