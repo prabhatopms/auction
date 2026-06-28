@@ -6,6 +6,7 @@ import { generateDailyArtwork } from './artGenerator.js';
 import { STARTING_BID } from './constants.js';
 import { getLotTitle, lotNo, lotDateStr, getAppUrl, productImageBlock, ctaButton, emailWrapper, escHtml } from './email-helpers.js';
 import { pollQikinkOrders } from './vendor/qikink.js';
+import { pollAllVendorOrders } from './vendor/index.js';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -604,9 +605,12 @@ export async function startScheduler() {
     await checkPaymentExpirations();
   });
 
-  // Every 30 minutes: poll Qikink for order status updates (printing → shipped → delivered)
+  // Every 30 minutes: poll vendors for order status updates (printing → shipped → delivered).
+  // Qikink keeps its dedicated poller (full status + shipping-email logic); Printful/Gelato
+  // are polled through the uniform vendor abstraction.
   cron.schedule('*/30 * * * *', async () => {
     await pollQikinkOrders().catch((e) => console.error('[Scheduler] Qikink poll error:', e.message));
+    await pollAllVendorOrders().catch((e) => console.error('[Scheduler] Vendor poll error:', e.message));
   });
 
   console.log('[Scheduler] Event-driven scheduler active — 12h bidding, 6h gap.');

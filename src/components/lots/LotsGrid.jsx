@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
-import { fmt, getArtworkUrl } from '../../data/lotsData';
+import { getArtworkUrl } from '../../data/lotsData';
+import { useCurrency } from '../../contexts/CurrencyContext';
 
 const API = import.meta.env.VITE_API_URL ?? '';
 
@@ -86,6 +87,7 @@ function createFrontCanvasForCard(artworkImage, lot, callback) {
 }
 
 export function Hero({ lot, currentBid, bids, bump, lotClosed, getCountdownTarget }) {
+  const { formatBid } = useCurrency();
   const cd = useCountdown(() => getCountdownTarget(lotClosed, lot.endsAt));
   const artUrl = getArtworkUrl(lot, API);
   const [overlaySrc, setOverlaySrc] = useState(null);
@@ -122,8 +124,7 @@ export function Hero({ lot, currentBid, bids, bump, lotClosed, getCountdownTarge
               <div className="hstat">
                 <div className="k">{bids === 0 ? 'Starting bid' : 'Current bid'}</div>
                 <div className={'v num' + (bump ? ' bump' : '')}>
-                  <span className="cur">₹</span>
-                  <span>{currentBid.toLocaleString('en-IN')}</span>
+                  <span>{formatBid(currentBid, lot)}</span>
                 </div>
               </div>
               <div className="hstat">
@@ -215,6 +216,7 @@ export function Toolbar({
 
 /* ---------- Lot card ---------- */
 export function LotCard({ lot, onPeek, showRibbon, userLoggedIn }) {
+  const { formatBid } = useCurrency();
   const passed = lot.status === 'unsold';
   const artworkUrl = getArtworkUrl(lot, API);
   const [overlaySrc, setOverlaySrc] = useState(null);
@@ -285,7 +287,7 @@ export function LotCard({ lot, onPeek, showRibbon, userLoggedIn }) {
             <div className="price-k">{passed ? 'Reserve not met' : 'Sold for'}</div>
             {passed
               ? <div className="price-v passed num">No sale</div>
-              : <div className="price-v num">{fmt(lot.soldPrice)}</div>}
+              : <div className="price-v num">{formatBid(lot.soldPrice, lot)}</div>}
           </div>
           <div className="bids">
             <span className="n num">{lot.bids}</span> bid{lot.bids === 1 ? '' : 's'}

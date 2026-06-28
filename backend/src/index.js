@@ -16,7 +16,9 @@ import bidRoutes from './routes/bids.js';
 import addressRoutes from './routes/addresses.js';
 import orderRoutes from './routes/orders.js';
 import vendorRoutes from './routes/vendor.js';
+import pricingRoutes from './routes/pricing.js';
 import ogRoutes from './routes/og.js';
+import { routeVendorOrder, pollAllVendorOrders } from './vendor/index.js';
 import { startScheduler, closeActiveLot, checkPaymentExpirations, createNewLot } from './scheduler.js';
 import { generateDailyArtwork, collectDailyData, generatePromptFromSignals, generateImageFromPrompt } from './artGenerator.js';
 import { notifyVendor, sendInvoiceEmail, sendShippingEmail } from './vendor/qikink.js';
@@ -179,7 +181,16 @@ app.post('/api/razorpay-webhook', express.raw({ type: 'application/json' }), asy
     ]);
 
     getIo()?.emit('lot:paid', { lotId, winnerId: userId });
-    notifyVendor(order, lot, address).catch((e) => console.error('[Webhook] vendor notify failed:', e));
+    routeVendorOrder(order, address, lot.artworkUrl)
+      .then(async (vendorResult) => {
+        const data = {};
+        if (vendorResult.vendorOrderId && !order.vendorOrderId) data.vendorOrderId = vendorResult.vendorOrderId;
+        if (vendorResult.vendorProvider && !order.vendorProvider) data.vendorProvider = vendorResult.vendorProvider;
+        if (Object.keys(data).length) {
+          await prisma.order.update({ where: { id: order.id }, data });
+        }
+      })
+      .catch((e) => console.error('[Webhook] vendor routing failed:', e));
     sendInvoiceEmail(order, lot, address, user.email, user.name).catch((e) => console.error('[Webhook] invoice email failed:', e));
 
     console.log(`[Webhook] payment.captured — created order ${orderNumber}`);
@@ -201,6 +212,7 @@ app.use('/api/lots', bidRoutes);
 app.use('/api/addresses', addressRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/vendor', vendorRoutes);
+app.use('/api', pricingRoutes);
 app.use('/api/og', cors({ origin: '*' }), ogRoutes);
 
 app.post('/api/admin/rotate', async (_req, res) => {

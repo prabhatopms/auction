@@ -330,6 +330,9 @@ export default function AdminPage() {
   const [sessionHistory, setSessionHistory] = useState([]);
   const [expandedSession, setExpandedSession] = useState(null);
   const [sessionDrafts, setSessionDrafts] = useState({});
+  const [pricingData, setPricingData] = useState(null);
+  const [pricingSaving, setPricingSaving] = useState({});
+  const [pricingEdits, setPricingEdits] = useState({});
 
   // Artwork Generation Studio states
   const [showStudio, setShowStudio] = useState(false);
@@ -424,6 +427,22 @@ export default function AdminPage() {
   }, [fetchCurrentLot, fetchDrafts, fetchSessionHistory]);
 
   useEffect(() => { refreshBiddingTab(); }, [refreshBiddingTab]);
+
+  useEffect(() => {
+    if (activeTab !== 'pricing' || pricingData) return;
+    fetch(API + '/api/admin/product-prices', { headers: { Authorization: 'Bearer ' + token } })
+      .then(r => r.json())
+      .then(d => {
+        setPricingData(d);
+        const edits = {};
+        (d.prices || []).forEach(p => {
+          edits[p.productType + '_' + p.currency + '_startingBid'] = String(p.startingBid);
+          edits[p.productType + '_' + p.currency + '_minIncrement'] = String(p.minIncrement);
+        });
+        setPricingEdits(edits);
+      })
+      .catch(() => {});
+  }, [activeTab, pricingData, token]);
 
   const notify = (msg) => {
     setGlobalMsg(msg);
@@ -757,7 +776,7 @@ export default function AdminPage() {
 
         {/* Top-level tabs */}
         <div style={{ display: 'flex', borderBottom: '1px solid var(--line)' }}>
-          {[['bidding', 'Bidding'], ['orders', 'Orders']].map(([key, label]) => (
+          {[['bidding', 'Bidding'], ['orders', 'Orders'], ['pricing', 'Pricing']].map(([key, label]) => (
             <button key={key} onClick={() => setActiveTab(key)} style={{
               padding: '13px 22px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
               background: 'none', border: 'none', letterSpacing: '0.03em',
@@ -1211,6 +1230,107 @@ export default function AdminPage() {
               ))
             )}
           </>
+        )}
+
+        {activeTab === 'pricing' && (
+          <div style={{ padding: '24px 0', maxWidth: 560 }}>
+            <h2 style={{ color: '#f4f1ea', marginBottom: 8, fontSize: 20, fontWeight: 600 }}>Product Pricing</h2>
+            <p style={{ color: '#9d9ab0', fontSize: 13, marginBottom: 28, lineHeight: 1.6 }}>
+              Set the base starting price and minimum bid increment per currency for each product type.
+              These apply to all lots of that product. INR prices are set per-lot in the Bidding tab.
+            </p>
+
+            {!pricingData ? (
+              <div style={{ color: '#9d9ab0' }}>Loading…</div>
+            ) : (
+              [{ key: 'tshirt', label: 'T-Shirt', icon: '👕' }].map(product => {
+                const getVal = (cur, field) => {
+                  const k = product.key + '_' + cur + '_' + field;
+                  return pricingEdits[k] !== undefined ? pricingEdits[k] : '';
+                };
+                const setVal = (cur, field, val) => {
+                  setPricingEdits(prev => Object.assign({}, prev, { [product.key + '_' + cur + '_' + field]: val }));
+                };
+                const saveProduct = () => {
+                  setPricingSaving(prev => Object.assign({}, prev, { [product.key]: true }));
+                  const prices = ['USD', 'GBP', 'EUR']
+                    .map(cur => ({
+                      currency: cur,
+                      startingBid: parseInt(getVal(cur, 'startingBid') || '0', 10),
+                      minIncrement: parseInt(getVal(cur, 'minIncrement') || '1', 10),
+                    }))
+                    .filter(p => p.startingBid > 0);
+                  fetch(API + '/api/admin/product-prices/' + product.key, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+                    body: JSON.stringify({ prices }),
+                  })
+                    .then(r => r.json())
+                    .then(data => {
+                      setPricingData(prev => {
+                        const existing = (prev.prices || []).filter(p => p.productType !== product.key);
+                        return { prices: [...existing, ...(data.prices || [])] };
+                      });
+                    })
+                    .catch(() => {})
+                    .finally(() => {
+                      setPricingSaving(prev => Object.assign({}, prev, { [product.key]: false }));
+                    });
+                };
+                const inputStyle = { width: 90, background: '#1e1b2e', border: '1px solid #3d3952', color: '#f4f1ea', borderRadius: 6, padding: '6px 10px', fontSize: 13 };
+                const CURRENCY_ROWS = [
+                  { cur: 'INR', label: '₹ INR', readonly: true },
+                  { cur: 'USD', label: '$ USD', readonly: false },
+                  { cur: 'GBP', label: '£ GBP', readonly: false },
+                  { cur: 'EUR', label: '€ EUR', readonly: false },
+                ];
+                return (
+                  <div key={product.key} style={{ background: '#1a1730', border: '1px solid #3d3952', borderRadius: 12, padding: 24, marginBottom: 24 }}>
+                    <div style={{ fontSize: 16, fontWeight: 600, color: '#f4f1ea', marginBottom: 20 }}>
+                      {product.icon} {product.label}
+                    </div>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid #2a2740' }}>
+                          <th style={{ textAlign: 'left', padding: '6px 0', color: '#9d9ab0', fontWeight: 500, width: 80 }}>Currency</th>
+                          <th style={{ textAlign: 'left', padding: '6px 12px', color: '#9d9ab0', fontWeight: 500 }}>Starting Bid</th>
+                          <th style={{ textAlign: 'left', padding: '6px 0', color: '#9d9ab0', fontWeight: 500 }}>Min Increment</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {CURRENCY_ROWS.map(({ cur, label, readonly }) => (
+                          <tr key={cur} style={{ borderBottom: '1px solid #1e1b2e' }}>
+                            <td style={{ padding: '10px 0', color: '#c8c4d8', fontWeight: 500 }}>{label}</td>
+                            <td style={{ padding: '6px 12px' }}>
+                              {readonly
+                                ? <span style={{ color: '#5a576e', fontSize: 12, fontStyle: 'italic' }}>varies per lot</span>
+                                : <input type="number" min="0" placeholder="0" value={getVal(cur, 'startingBid')} onChange={e => setVal(cur, 'startingBid', e.target.value)} style={inputStyle} />
+                              }
+                            </td>
+                            <td style={{ padding: '6px 0' }}>
+                              {readonly
+                                ? <span style={{ color: '#5a576e', fontSize: 12, fontStyle: 'italic' }}>—</span>
+                                : <input type="number" min="1" placeholder="1" value={getVal(cur, 'minIncrement')} onChange={e => setVal(cur, 'minIncrement', e.target.value)} style={{ ...inputStyle, width: 70 }} />
+                              }
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <div style={{ marginTop: 20, display: 'flex', justifyContent: 'flex-end' }}>
+                      <button
+                        onClick={saveProduct}
+                        disabled={!!pricingSaving[product.key]}
+                        style={{ background: pricingSaving[product.key] ? '#3d3952' : '#e6c27e', color: '#1a1830', border: 'none', borderRadius: 8, padding: '8px 20px', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}
+                      >
+                        {pricingSaving[product.key] ? 'Saving…' : 'Save T-Shirt Prices'}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
         )}
       </div>
 

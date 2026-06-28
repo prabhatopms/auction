@@ -1,16 +1,46 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useCurrency } from '../contexts/CurrencyContext';
 
 const API = import.meta.env.VITE_API_URL ?? '';
 
-const EMPTY_FORM = { name: '', line1: '', line2: '', city: '', state: '', pincode: '', phone: '' };
+const EMPTY_FORM = { name: '', line1: '', line2: '', city: '', state: '', pincode: '', phone: '', country: 'IN' };
+
+const COUNTRY_OPTIONS = [
+  { code: 'IN', label: 'India' },
+  { code: 'US', label: 'United States' },
+  { code: 'GB', label: 'United Kingdom' },
+  { code: 'CA', label: 'Canada' },
+  { code: 'DE', label: 'Germany' },
+  { code: 'FR', label: 'France' },
+  { code: 'NL', label: 'Netherlands' },
+  { code: 'ES', label: 'Spain' },
+  { code: 'IT', label: 'Italy' },
+  { code: 'BE', label: 'Belgium' },
+  { code: 'AT', label: 'Austria' },
+  { code: 'SE', label: 'Sweden' },
+  { code: 'DK', label: 'Denmark' },
+  { code: 'FI', label: 'Finland' },
+  { code: 'NO', label: 'Norway' },
+  { code: 'CH', label: 'Switzerland' },
+  { code: 'PL', label: 'Poland' },
+  { code: 'AU', label: 'Australia' },
+];
 
 function AddressForm({ initial, onSave, onCancel }) {
-  const [form, setForm] = useState(initial || EMPTY_FORM);
+  const { token } = useAuth();
+  const { currency } = useCurrency();
+  const defaultCountry = currency === 'USD' ? 'US' : currency === 'GBP' ? 'GB' : currency === 'EUR' ? 'DE' : 'IN';
+  const [form, setForm] = useState(
+    initial
+      ? { ...EMPTY_FORM, ...initial }
+      : { ...EMPTY_FORM, country: defaultCountry }
+  );
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
-  const { token } = useAuth();
+
+  const intl = form.country && form.country !== 'IN';
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
@@ -56,17 +86,25 @@ function AddressForm({ initial, onSave, onCancel }) {
         <label className="addr-label">Address line 2 (optional)</label>
         <input className="addr-input" value={form.line2} onChange={set('line2')} />
       </div>
+      <div className="addr-form-group">
+        <label className="addr-label">Country</label>
+        <select className="addr-input" value={form.country || 'IN'} onChange={set('country')} required>
+          {COUNTRY_OPTIONS.map((c) => (
+            <option key={c.code} value={c.code}>{c.label}</option>
+          ))}
+        </select>
+      </div>
       <div className="addr-form-row">
         <div className="addr-form-group">
           <label className="addr-label">City</label>
           <input className="addr-input" value={form.city} onChange={set('city')} required />
         </div>
         <div className="addr-form-group">
-          <label className="addr-label">State</label>
+          <label className="addr-label">{intl ? 'State / Region' : 'State'}</label>
           <input className="addr-input" value={form.state} onChange={set('state')} required />
         </div>
         <div className="addr-form-group addr-form-group--sm">
-          <label className="addr-label">Pincode</label>
+          <label className="addr-label">{intl ? 'Postal Code' : 'Pincode'}</label>
           <input className="addr-input" value={form.pincode} onChange={set('pincode')} required />
         </div>
       </div>
@@ -165,7 +203,7 @@ export default function Addresses() {
                     <div key={a.id} className={'addr-card' + (a.isDefault ? ' addr-card--default' : '')}>
                       {a.isDefault && <span className="addr-default-badge">Default</span>}
                       <div className="addr-card-name">{a.name}</div>
-                      <div className="addr-card-text">{[a.line1, a.line2, a.city, a.state, a.pincode].filter(Boolean).join(', ')}</div>
+                      <div className="addr-card-text">{[a.line1, a.line2, a.city, a.state, a.pincode, (a.country && a.country !== 'IN') ? a.country : null].filter(Boolean).join(', ')}</div>
                       <div className="addr-card-text">{a.phone}</div>
                       <div className="addr-card-actions">
                         <button className="addr-action-btn" onClick={() => setEditing(a)}>Edit</button>

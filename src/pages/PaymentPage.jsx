@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useCurrency } from '../contexts/CurrencyContext';
 
 const API = import.meta.env.VITE_API_URL ?? '';
 const HAS_RAZORPAY = Boolean(import.meta.env.VITE_RAZORPAY_KEY_ID);
@@ -70,6 +71,7 @@ function AddressForm({ onSave, onCancel }) {
 
 export default function PaymentPage() {
   const { user, token } = useAuth();
+  const { currency, formatBid, formatDirect } = useCurrency();
   const navigate = useNavigate();
 
   const [lot, setLot] = useState(null);
@@ -207,7 +209,7 @@ export default function PaymentPage() {
       const r = await fetch(`${API}/api/lots/create-razorpay-order`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ addressId: selectedAddr, tshirtSize }),
+        body: JSON.stringify({ addressId: selectedAddr, tshirtSize, currency }),
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || 'Failed to create order');
@@ -405,7 +407,7 @@ export default function PaymentPage() {
                 <div style={{ margin: '16px 20px 0', padding: '12px 16px', background: 'rgba(230,194,126,0.05)', border: '1px solid rgba(230,194,126,0.15)', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: '13px', color: '#7d7a8c' }}>Your winning bid</span>
                   <span style={{ fontSize: '18px', fontWeight: 700, color: '#e6c27e', fontFamily: 'monospace' }}>
-                    ₹{myBid?.toLocaleString('en-IN')}
+                    {lot ? formatBid(myBid, lot) : formatDirect(myBid)}
                   </span>
                 </div>
 
@@ -501,7 +503,7 @@ export default function PaymentPage() {
                         disabled={step === 'paying' || !selectedAddr}
                         style={{ width: '100%' }}
                       >
-                        {step === 'paying' ? 'Opening payment…' : `Pay ₹${myBid?.toLocaleString('en-IN')} →`}
+                        {step === 'paying' ? 'Opening payment…' : `Pay ${lot ? formatBid(myBid, lot) : formatDirect(myBid)} →`}
                       </button>
                     ) : (
                       <div>
@@ -516,7 +518,7 @@ export default function PaymentPage() {
                         >
                           {step === 'paying'
                             ? 'Processing…'
-                            : `Simulate Payment · ₹${myBid?.toLocaleString('en-IN')}`
+                            : `Simulate Payment · ${lot ? formatBid(myBid, lot) : formatDirect(myBid)}`
                           }
                         </button>
                         <p style={{ fontSize: '11px', color: '#7d7a8c', textAlign: 'center', margin: '8px 0 0', lineHeight: '1.5' }}>

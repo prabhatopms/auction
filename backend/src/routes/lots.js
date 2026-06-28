@@ -105,7 +105,12 @@ router.get('/my-payment', requireAuth, async (req, res) => {
 /* POST /api/lots/create-razorpay-order */
 router.post('/create-razorpay-order', requireAuth, async (req, res) => {
   try {
-    const { addressId } = req.body;
+    const { addressId, currency = 'INR' } = req.body;
+    const SUPPORTED = ['INR', 'USD', 'GBP', 'EUR'];
+    if (!SUPPORTED.includes(currency)) {
+      return res.status(400).json({ error: 'Unsupported currency' });
+    }
+
     const lot = await prisma.lot.findFirst({
       where: { status: { in: ['closed', 'hidden'] }, lotNumber: { gt: 0 } },
       orderBy: { lotNumber: 'desc' },
@@ -120,18 +125,52 @@ router.post('/create-razorpay-order', requireAuth, async (req, res) => {
     const bids = await prisma.bid.findMany({ where: { lotId: lot.id, userId: req.userId }, orderBy: { amount: 'desc' }, take: 1 });
     const amount = bids[0]?.amount ?? lot.startingBid;
 
+    if (currency === 'INR') {
+      const order = await razorpay.orders.create({
+        amount: amount * 100,
+        currency: 'INR',
+        receipt: `lot_${lot.id}`,
+        notes: {
+          lotId: lot.id,
+          userId: req.userId,
+          addressId: addressId ?? '',
+        },
+      });
+
+      return res.json({ razorpayOrderId: order.id, amount: order.amount, currency: order.currency, lotId: lot.id, lotTitle: getLotTitle(lot) });
+    }
+
+    // Non-INR: price the order from the product-level pricing table.
+    const productPrice = await prisma.productPrice.findUnique({
+      where: { productType_currency: { productType: lot.productType || 'tshirt', currency } },
+    });
+    if (!productPrice) {
+      return res.status(400).json({ error: 'No pricing configured for this currency' });
+    }
+
+    const displayAmount = Math.round(productPrice.startingBid * (amount / lot.startingBid));
+
     const order = await razorpay.orders.create({
-      amount: amount * 100,
-      currency: 'INR',
+      amount: displayAmount * 100,
+      currency,
       receipt: `lot_${lot.id}`,
       notes: {
         lotId: lot.id,
         userId: req.userId,
         addressId: addressId ?? '',
+        currency,
+        displayAmount: String(displayAmount),
       },
     });
 
-    res.json({ razorpayOrderId: order.id, amount: order.amount, currency: order.currency, lotId: lot.id, lotTitle: getLotTitle(lot) });
+    return res.json({
+      razorpayOrderId: order.id,
+      amount: order.amount,
+      currency: order.currency,
+      displayAmount,
+      lotId: lot.id,
+      lotTitle: getLotTitle(lot),
+    });
   } catch (err) {
     console.error('[Razorpay] create order error:', err);
     res.status(500).json({ error: 'Failed to create payment order' });
@@ -174,6 +213,11 @@ router.post('/verify-payment', requireAuth, async (req, res) => {
     const bids = await prisma.bid.findMany({ where: { lotId: lot.id, userId: req.userId }, orderBy: { amount: 'desc' }, take: 1 });
     const amount = bids[0]?.amount ?? lot.startingBid;
 
+    // Route fulfilment provider from the shipping country.
+    let vendorProvider = 'gelato';
+    if (address.country === 'IN') vendorProvider = 'qikink';
+    else if (['US', 'CA'].includes(address.country)) vendorProvider = 'printful';
+
     const year = new Date().getFullYear();
     const orderCount = await prisma.order.count();
     const orderNumber = `OX-${year}-${String(orderCount + 1).padStart(3, '0')}`;
@@ -194,6 +238,9 @@ router.post('/verify-payment', requireAuth, async (req, res) => {
           razorpayOrderId,
           razorpayPaymentId,
           status: 'processing',
+          currency: req.body.currency || 'INR',
+          displayAmount: req.body.displayAmount || null,
+          vendorProvider,
         },
       }),
     ]);

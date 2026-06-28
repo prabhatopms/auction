@@ -47,6 +47,7 @@ model Lot {
   artworkUrl      String?
   artworkHeadline String?
   artworkPrompt   String?
+  productType     String         @default("tshirt")
   bids            Bid[]
   order           Order?
   artworkDrafts   ArtworkDraft[]
@@ -74,6 +75,7 @@ model Address {
   pincode   String
   phone     String
   isDefault Boolean  @default(false)
+  country   String   @default("IN")
   createdAt DateTime @default(now())
   orders    Order[]
 }
@@ -101,6 +103,9 @@ model Order {
   shippedAt         DateTime?
   deliveredAt       DateTime?
   notes             String?
+  currency       String    @default("INR")
+  displayAmount  Int?
+  vendorProvider String?
   createdAt         DateTime  @default(now())
 }
 
@@ -112,5 +117,17 @@ model Bid {
   userId    String
   lot       Lot      @relation(fields: [lotId], references: [id])
   user      User     @relation(fields: [userId], references: [id])
+}
+
+model ProductPrice {
+  id           String   @id @default(cuid())
+  productType  String
+  currency     String
+  startingBid  Int
+  minIncrement Int      @default(1)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([productType, currency])
 }
 

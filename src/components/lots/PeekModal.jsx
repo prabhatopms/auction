@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { fmt, getArtworkUrl } from '../../data/lotsData';
+import { useCurrency } from '../../contexts/CurrencyContext';
 
 const API = import.meta.env.VITE_API_URL ?? '';
 import DeliveryTracker from './DeliveryTracker';
@@ -372,6 +373,7 @@ function createFrontCanvasForCard(artworkImage, lot, callback) {
 }
 
 export default function PeekModal({ lot, onClose, userLoggedIn }) {
+  const { formatBid } = useCurrency();
   const [shot, setShot] = useState(0);
   const [immersive, setImmersive] = useState(false);
   const live = lot.status === 'live';
@@ -755,8 +757,7 @@ export default function PeekModal({ lot, onClose, userLoggedIn }) {
                 <div>
                   <div className="r-k">{lot.bids === 0 ? 'Starting bid' : 'Current bid'}</div>
                   <div className="r-price">
-                    <span className="cur">₹</span>
-                    {lot.currentBid != null ? lot.currentBid.toLocaleString('en-IN') : '—'}
+                    {lot.currentBid != null ? formatBid(lot.currentBid, lot) : '—'}
                   </div>
                 </div>
                 <div className="r-bids"><span className="n num">{lot.bids}</span> bids so far</div>
@@ -775,7 +776,7 @@ export default function PeekModal({ lot, onClose, userLoggedIn }) {
                   <div className="r-k">{passed ? 'Outcome' : 'Hammer price'}</div>
                   {passed
                     ? <div className="r-price passed">No sale</div>
-                    : <div className="r-price num"><span className="cur">₹</span>{lot.soldPrice.toLocaleString('en-IN')}</div>}
+                    : <div className="r-price num">{formatBid(lot.soldPrice, lot)}</div>}
                 </div>
                 <div className="r-bids">
                   <span className="n num">{lot.bids}</span> bid{lot.bids === 1 ? '' : 's'} placed

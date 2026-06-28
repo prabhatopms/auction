@@ -2,10 +2,12 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { io as socketIO } from 'socket.io-client';
 import { useAuth } from './contexts/AuthContext';
+import { useCurrency } from './contexts/CurrencyContext';
 import Starfield from './components/Starfield';
 import Stage from './components/Stage';
 import BidRail from './components/BidRail';
 import UserMenu from './components/UserMenu';
+import CountrySwitcher from './components/CountrySwitcher';
 import SEO from './components/SEO';
 
 const API = import.meta.env.VITE_API_URL ?? '';
@@ -67,6 +69,7 @@ function getWatchingCount(lotNumber, bidsCount) {
 
 export default function App() {
   const { user, token, logout } = useAuth();
+  const { formatBid } = useCurrency();
   const navigate = useNavigate();
   const [showMobileMenu, setShowMobileMenu] = useState(false);
 
@@ -288,7 +291,8 @@ export default function App() {
           </div>
         </div>
 
-        <div className="topbar-right">
+        <div className="topbar-right" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <CountrySwitcher />
           {user ? (
             <UserMenu user={user} logout={logout} />
           ) : (
@@ -339,7 +343,7 @@ export default function App() {
             )}
           </div>
           <div className="v num" style={{ color: status === 'outbid' ? 'var(--lose)' : 'var(--txt)' }}>
-            ₹{currentBid.toLocaleString('en-IN')}
+            {formatBid(currentBid, lot)}
           </div>
         </div>
         <button
@@ -355,7 +359,7 @@ export default function App() {
                 ? 'Placing bid…'
                 : bids.length === 0 
                   ? 'Place Bid' 
-                  : `Raise Bid : ₹${minNext.toLocaleString('en-IN')}`}
+                  : `Raise Bid : ${formatBid(minNext, lot)}`}
         </button>
       </div>
 

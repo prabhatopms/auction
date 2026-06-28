@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
+import { useCurrency } from '../contexts/CurrencyContext';
 
-const fmt = (n) => '₹' + n.toLocaleString('en-IN');
 const pad = (n) => String(n).padStart(2, '0');
 
 const AUTO_RESTART_DELAY_MS = 6 * 60 * 60 * 1000;
@@ -33,7 +33,7 @@ function NextAuctionCountdown({ endsAt }) {
   );
 }
 
-function ClosedBlob({ lot, bids, user, winner, myRank, onPayNow }) {
+function ClosedBlob({ lot, bids, user, winner, myRank, onPayNow, fmtBid }) {
   const topBid = bids[0] ?? null;
   const isCurrentPayee = user && lot?.currentPayeeId === user.id && lot?.paymentStatus?.startsWith('pending_');
   const isInQueue = user && !isCurrentPayee && myRank !== null && lot?.paymentStatus?.startsWith('pending_');
@@ -55,7 +55,7 @@ function ClosedBlob({ lot, bids, user, winner, myRank, onPayNow }) {
             You won this lot!
           </h3>
           <p style={{ fontSize: '13px', lineHeight: 1.6, color: 'var(--txt-mute)', margin: '0 0 10px' }}>
-            Winning bid: <strong style={{ color: 'var(--txt)' }}>{topBid ? fmt(topBid.amount) : '—'}</strong>
+            Winning bid: <strong style={{ color: 'var(--txt)' }}>{topBid ? fmtBid(topBid.amount) : '—'}</strong>
           </p>
           {lot.payeeExpiresAt && (
             <div style={{ margin: '0 0 16px', fontSize: '12px', color: 'var(--txt-mute)' }}>
@@ -88,7 +88,7 @@ function ClosedBlob({ lot, bids, user, winner, myRank, onPayNow }) {
           </h3>
           {topBid && (
             <p style={{ fontSize: '13px', lineHeight: 1.6, color: 'var(--txt-mute)', margin: '0 0 10px' }}>
-              <strong style={{ color: 'var(--txt)' }}>{topBid.userName || topBid.name}</strong> won with <strong style={{ color: 'var(--txt)' }}>{fmt(topBid.amount)}</strong>.
+              <strong style={{ color: 'var(--txt)' }}>{topBid.userName || topBid.name}</strong> won with <strong style={{ color: 'var(--txt)' }}>{fmtBid(topBid.amount)}</strong>.
             </p>
           )}
           <p style={{ fontSize: '12px', lineHeight: 1.6, color: 'var(--txt-mute)', margin: 0 }}>
@@ -108,7 +108,7 @@ function ClosedBlob({ lot, bids, user, winner, myRank, onPayNow }) {
           </h3>
           {topBid ? (
             <p style={{ fontSize: '13px', lineHeight: 1.6, color: 'var(--txt-mute)', margin: 0 }}>
-              <strong style={{ color: 'var(--txt)' }}>{topBid.userName || topBid.name}</strong> won with <strong style={{ color: 'var(--txt)' }}>{fmt(topBid.amount)}</strong>.
+              <strong style={{ color: 'var(--txt)' }}>{topBid.userName || topBid.name}</strong> won with <strong style={{ color: 'var(--txt)' }}>{fmtBid(topBid.amount)}</strong>.
               {paymentExpired && lot?.paymentStatus !== 'paid' && (
                 <span style={{ display: 'block', marginTop: '6px', fontSize: '11px', color: 'var(--txt-mute)' }}>
                   Payment window closed — lot unsettled.
@@ -139,7 +139,7 @@ function ClosedBlob({ lot, bids, user, winner, myRank, onPayNow }) {
   );
 }
 
-function StatusBanner({ status, currentBid }) {
+function StatusBanner({ status, currentBid, fmtBid }) {
   if (status === 'winning') {
     return (
       <div className="status-banner win">
@@ -152,14 +152,14 @@ function StatusBanner({ status, currentBid }) {
     return (
       <div className="status-banner lose">
         <span className="icon">!</span>
-        <span className="sb-text">You&apos;ve been <b>outbid</b> — current is {fmt(currentBid)}.</span>
+        <span className="sb-text">You&apos;ve been <b>outbid</b> — current is {fmtBid(currentBid)}.</span>
       </div>
     );
   }
   return null;
 }
 
-function BidForm({ minNext, onPlace, disabled, onLoginPrompt, user, bidsCount, isHighestBidder }) {
+function BidForm({ minNext, onPlace, disabled, onLoginPrompt, user, bidsCount, isHighestBidder, fmtBid }) {
   const [err, setErr] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -194,7 +194,7 @@ function BidForm({ minNext, onPlace, disabled, onLoginPrompt, user, bidsCount, i
         disabled={submitting || isHighestBidder}
         style={{ width: '100%', padding: '14px 18px', fontSize: '15px', borderRadius: 'var(--r-sm)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}
       >
-        {!user ? 'Sign in to bid' : submitting ? 'Placing bid…' : bidsCount === 0 ? 'Place Bid' : `Raise Bid : ${fmt(minNext)}`}
+        {!user ? 'Sign in to bid' : submitting ? 'Placing bid…' : bidsCount === 0 ? 'Place Bid' : `Raise Bid : ${fmtBid(minNext)}`}
       </button>
       {err && <div className="bid-error" style={{ justifyContent: 'center' }}><span>⚠</span> {err}</div>}
       {!user && (
@@ -206,12 +206,12 @@ function BidForm({ minNext, onPlace, disabled, onLoginPrompt, user, bidsCount, i
   );
 }
 
-function MyBid({ myBid, status }) {
+function MyBid({ myBid, status, fmtBid }) {
   return (
     <div className="mybid">
       <div className="row"><span className="k">Your bid</span></div>
       <div className="row" style={{ marginTop: 6 }}>
-        <span className="amt num">{fmt(myBid)}</span>
+        <span className="amt num">{fmtBid(myBid)}</span>
         <span style={{ fontSize: 12, color: status === 'winning' ? 'var(--win)' : 'var(--lose)' }}>
           {status === 'winning' ? '● Leading' : '● Outbid'}
         </span>
@@ -220,7 +220,7 @@ function MyBid({ myBid, status }) {
   );
 }
 
-function Feed({ bids }) {
+function Feed({ bids, fmtBid }) {
   return (
     <div className="feed">
       <div className="feed-head">
@@ -242,7 +242,7 @@ function Feed({ bids }) {
                 {b.time ?? new Date(b.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
               </div>
             </div>
-            <span className="amt num">{fmt(b.amount)}</span>
+            <span className="amt num">{fmtBid(b.amount)}</span>
           </div>
         ))}
       </div>
@@ -253,6 +253,8 @@ function Feed({ bids }) {
 export default function BidRail({ auction }) {
   const { lot, startingBid, currentBid, minInc, myBid, status, bids, placeBid, bump, user, winner, watching, onLoginPrompt, lotClosed, onPayNow, myRank } = auction;
   const minNext = bids.length > 0 ? currentBid + minInc : startingBid;
+  const { formatBid, symbol, getDisplayBid, locale } = useCurrency();
+  const fmtBid = (n) => formatBid(n, lot);
 
   let signalsUsed = [];
   let isJson = false;
@@ -427,22 +429,22 @@ export default function BidRail({ auction }) {
       <div className="price-block">
         <div className="price-row price-start">
           <span className="label">Starting bid</span>
-          <span className="amt num">{fmt(startingBid)}</span>
+          <span className="amt num">{fmtBid(startingBid)}</span>
         </div>
         <div className="current">
           <div className="price-row"><span className="label">{bids.length === 0 ? 'Starting bid' : 'Current bid'}</span></div>
           <div className={'amt' + (bump ? ' bump' : '')} key={currentBid}>
-            <span className="cur num">₹</span>
-            <span className="num">{currentBid.toLocaleString('en-IN')}</span>
+            <span className="cur num">{symbol}</span>
+            <span className="num">{(getDisplayBid(currentBid, lot) ?? currentBid).toLocaleString(locale)}</span>
           </div>
-          <div className="sub">{bids.length} bids · {fmt(currentBid - startingBid)} over start</div>
+          <div className="sub">{bids.length} bids · {fmtBid(currentBid - startingBid)} over start</div>
         </div>
       </div>
 
-      {!lotClosed && <StatusBanner status={status} currentBid={currentBid} />}
+      {!lotClosed && <StatusBanner status={status} currentBid={currentBid} fmtBid={fmtBid} />}
 
       {myBid !== null && !lotClosed && (
-        <MyBid myBid={myBid} status={status} />
+        <MyBid myBid={myBid} status={status} fmtBid={fmtBid} />
       )}
 
       {!lotClosed && (
@@ -454,6 +456,7 @@ export default function BidRail({ auction }) {
           onLoginPrompt={onLoginPrompt}
           bidsCount={bids.length}
           isHighestBidder={status === 'winning'}
+          fmtBid={fmtBid}
         />
       )}
 
@@ -465,10 +468,11 @@ export default function BidRail({ auction }) {
           winner={winner}
           myRank={myRank}
           onPayNow={onPayNow}
+          fmtBid={fmtBid}
         />
       )}
 
-      {!lotClosed && <Feed bids={bids} />}
+      {!lotClosed && <Feed bids={bids} fmtBid={fmtBid} />}
 
       {isJson && interpretiveStatement && (
         <div style={{
