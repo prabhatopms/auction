@@ -159,7 +159,7 @@ function StatusBanner({ status, currentBid, fmtBid }) {
   return null;
 }
 
-function BidForm({ minNext, onPlace, disabled, onLoginPrompt, user, bidsCount, isHighestBidder, fmtBid }) {
+function BidForm({ minNext, displayMinNext, onPlace, disabled, onLoginPrompt, user, bidsCount, isHighestBidder, fmtBid, symbol, locale }) {
   const [err, setErr] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -194,7 +194,7 @@ function BidForm({ minNext, onPlace, disabled, onLoginPrompt, user, bidsCount, i
         disabled={submitting || isHighestBidder}
         style={{ width: '100%', padding: '14px 18px', fontSize: '15px', borderRadius: 'var(--r-sm)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}
       >
-        {!user ? 'Sign in to bid' : submitting ? 'Placing bid…' : bidsCount === 0 ? 'Place Bid' : `Raise Bid : ${fmtBid(minNext)}`}
+        {!user ? 'Sign in to bid' : submitting ? 'Placing bid…' : bidsCount === 0 ? 'Place Bid' : `Raise Bid : ${symbol}${Math.round(displayMinNext).toLocaleString(locale)}`}
       </button>
       {err && <div className="bid-error" style={{ justifyContent: 'center' }}><span>⚠</span> {err}</div>}
       {!user && (
@@ -252,9 +252,16 @@ function Feed({ bids, fmtBid }) {
 
 export default function BidRail({ auction }) {
   const { lot, startingBid, currentBid, minInc, myBid, status, bids, placeBid, bump, user, winner, watching, onLoginPrompt, lotClosed, onPayNow, myRank } = auction;
-  const minNext = bids.length > 0 ? currentBid + minInc : startingBid;
-  const { formatBid, symbol, getDisplayBid, locale } = useCurrency();
+  const { formatBid, symbol, getDisplayBid, getMinIncrement, toCanonical, locale } = useCurrency();
   const fmtBid = (n) => formatBid(n, lot);
+
+  // Compute minNext in display currency so the button reflects the per-currency increment
+  const displayCurrentBid = getDisplayBid(currentBid, lot) ?? currentBid;
+  const displayStartingBid = getDisplayBid(startingBid, lot) ?? startingBid;
+  const displayMinInc = getMinIncrement(lot);
+  const displayMinNext = bids.length > 0 ? displayCurrentBid + displayMinInc : displayStartingBid;
+  // Convert back to canonical INR for the actual bid submission
+  const minNext = toCanonical(displayMinNext, lot);
 
   let signalsUsed = [];
   let isJson = false;
@@ -450,6 +457,7 @@ export default function BidRail({ auction }) {
       {!lotClosed && (
         <BidForm
           minNext={minNext}
+          displayMinNext={displayMinNext}
           onPlace={placeBid}
           disabled={false}
           user={user}
@@ -457,6 +465,8 @@ export default function BidRail({ auction }) {
           bidsCount={bids.length}
           isHighestBidder={status === 'winning'}
           fmtBid={fmtBid}
+          symbol={symbol}
+          locale={locale}
         />
       )}
 

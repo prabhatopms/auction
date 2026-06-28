@@ -323,7 +323,6 @@ export default function AdminPage() {
   const [activeTab, setActiveTab] = useState('bidding');
   const [currentLot, setCurrentLot] = useState(null);
   const [artworkDrafts, setArtworkDrafts] = useState([]);
-  const [generatingDraft, setGeneratingDraft] = useState(false);
   const [artworkMsg, setArtworkMsg] = useState(null);
   const [igPosting, setIgPosting] = useState(new Set());
   const [igPosted, setIgPosted] = useState(new Set());
@@ -465,24 +464,6 @@ export default function AdminPage() {
       notify(`Error: ${err.message}`);
     } finally {
       setAuctionLoading(null);
-    }
-  };
-
-  const handleGenerateDraft = async () => {
-    setGeneratingDraft(true);
-    setArtworkMsg(null);
-    try {
-      const r = await fetch(`${API}/api/admin/generate-artwork-draft`, {
-        method: 'POST',
-        headers: authHeader(),
-      });
-      const data = await r.json();
-      if (!r.ok) throw new Error(data.error || 'Generation failed');
-      setArtworkDrafts((prev) => [data.draft, ...prev]);
-    } catch (err) {
-      setArtworkMsg({ text: `Error: ${err.message}`, ok: false });
-    } finally {
-      setGeneratingDraft(false);
     }
   };
 
@@ -906,7 +887,7 @@ export default function AdminPage() {
               </div>
 
               {/* Artwork cards */}
-              {artworkDrafts.length === 0 && !generatingDraft ? (
+              {artworkDrafts.length === 0 ? (
                 <div style={{ fontSize: 13, color: '#4d4a5c', paddingTop: 8 }}>
                   No artworks generated yet. Click "Generate Artwork" to create one.
                 </div>
@@ -1253,13 +1234,16 @@ export default function AdminPage() {
                 };
                 const saveProduct = () => {
                   setPricingSaving(prev => Object.assign({}, prev, { [product.key]: true }));
-                  const prices = ['USD', 'GBP', 'EUR']
-                    .map(cur => ({
-                      currency: cur,
-                      startingBid: parseInt(getVal(cur, 'startingBid') || '0', 10),
-                      minIncrement: parseInt(getVal(cur, 'minIncrement') || '1', 10),
-                    }))
-                    .filter(p => p.startingBid > 0);
+                  const prices = [];
+                  // INR: only save minIncrement (startingBid varies per lot)
+                  const inrInc = parseInt(getVal('INR', 'minIncrement') || '50', 10);
+                  if (inrInc > 0) prices.push({ currency: 'INR', startingBid: 0, minIncrement: inrInc });
+                  // Other currencies: save both fields
+                  ['USD', 'GBP', 'EUR'].forEach(cur => {
+                    const startingBid = parseInt(getVal(cur, 'startingBid') || '0', 10);
+                    const minIncrement = parseInt(getVal(cur, 'minIncrement') || '1', 10);
+                    if (startingBid > 0) prices.push({ currency: cur, startingBid, minIncrement });
+                  });
                   fetch(API + '/api/admin/product-prices/' + product.key, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
@@ -1279,10 +1263,10 @@ export default function AdminPage() {
                 };
                 const inputStyle = { width: 90, background: '#1e1b2e', border: '1px solid #3d3952', color: '#f4f1ea', borderRadius: 6, padding: '6px 10px', fontSize: 13 };
                 const CURRENCY_ROWS = [
-                  { cur: 'INR', label: '₹ INR', readonly: true },
-                  { cur: 'USD', label: '$ USD', readonly: false },
-                  { cur: 'GBP', label: '£ GBP', readonly: false },
-                  { cur: 'EUR', label: '€ EUR', readonly: false },
+                  { cur: 'INR', label: '₹ INR' },
+                  { cur: 'USD', label: '$ USD' },
+                  { cur: 'GBP', label: '£ GBP' },
+                  { cur: 'EUR', label: '€ EUR' },
                 ];
                 return (
                   <div key={product.key} style={{ background: '#1a1730', border: '1px solid #3d3952', borderRadius: 12, padding: 24, marginBottom: 24 }}>
@@ -1298,20 +1282,17 @@ export default function AdminPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {CURRENCY_ROWS.map(({ cur, label, readonly }) => (
+                        {CURRENCY_ROWS.map(({ cur, label, readonlyBid }) => (
                           <tr key={cur} style={{ borderBottom: '1px solid #1e1b2e' }}>
                             <td style={{ padding: '10px 0', color: '#c8c4d8', fontWeight: 500 }}>{label}</td>
                             <td style={{ padding: '6px 12px' }}>
-                              {readonly
+                              {readonlyBid
                                 ? <span style={{ color: '#5a576e', fontSize: 12, fontStyle: 'italic' }}>varies per lot</span>
                                 : <input type="number" min="0" placeholder="0" value={getVal(cur, 'startingBid')} onChange={e => setVal(cur, 'startingBid', e.target.value)} style={inputStyle} />
                               }
                             </td>
                             <td style={{ padding: '6px 0' }}>
-                              {readonly
-                                ? <span style={{ color: '#5a576e', fontSize: 12, fontStyle: 'italic' }}>—</span>
-                                : <input type="number" min="1" placeholder="1" value={getVal(cur, 'minIncrement')} onChange={e => setVal(cur, 'minIncrement', e.target.value)} style={{ ...inputStyle, width: 70 }} />
-                              }
+                              <input type="number" min="1" placeholder={cur === 'INR' ? '50' : '1'} value={getVal(cur, 'minIncrement')} onChange={e => setVal(cur, 'minIncrement', e.target.value)} style={{ ...inputStyle, width: 70 }} />
                             </td>
                           </tr>
                         ))}

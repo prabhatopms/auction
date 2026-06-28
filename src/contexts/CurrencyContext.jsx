@@ -147,9 +147,9 @@ export function CurrencyProvider({ children }) {
   }, [currency, productPrices]);
 
   const getMinIncrement = useCallback((lot) => {
-    if (currency === 'INR') return 50;
     const productType = lot?.productType || 'tshirt';
     const entry = productPrices.find((p) => p.productType === productType && p.currency === currency);
+    if (currency === 'INR') return entry?.minIncrement ?? 50;
     return entry?.minIncrement ?? 1;
   }, [currency, productPrices]);
 

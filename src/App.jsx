@@ -69,7 +69,7 @@ function getWatchingCount(lotNumber, bidsCount) {
 
 export default function App() {
   const { user, token, logout } = useAuth();
-  const { formatBid } = useCurrency();
+  const { formatBid, symbol, locale, getDisplayBid, getMinIncrement, toCanonical } = useCurrency();
   const navigate = useNavigate();
   const [showMobileMenu, setShowMobileMenu] = useState(false);
 
@@ -221,7 +221,11 @@ export default function App() {
   };
   const urgent = cd.total < 300 && cd.total > 0 && !lotClosed;
   const startingBid = lot?.startingBid ?? 1;
-  const minNext = bids.length > 0 ? currentBid + minInc : startingBid;
+  const displayCurrentBid = getDisplayBid(currentBid, lot) ?? currentBid;
+  const displayStartingBid = getDisplayBid(startingBid, lot) ?? startingBid;
+  const displayMinInc = getMinIncrement(lot);
+  const displayMinNext = bids.length > 0 ? displayCurrentBid + displayMinInc : displayStartingBid;
+  const minNext = toCanonical(displayMinNext, lot);
 
   const myRank = (user && lot?.status === 'closed') ? getMyRank(bids, user.id) : null;
 
@@ -359,7 +363,7 @@ export default function App() {
                 ? 'Placing bid…'
                 : bids.length === 0 
                   ? 'Place Bid' 
-                  : `Raise Bid : ${formatBid(minNext, lot)}`}
+                  : `Raise Bid : ${symbol}${Math.round(displayMinNext).toLocaleString(locale)}`}
         </button>
       </div>
 
