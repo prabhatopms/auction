@@ -94,3 +94,35 @@ export function formatSignalWithSource(sig) {
 
   return { text, source };
 }
+
+/* Builds a verification URL for a signal so users can confirm it's real.
+   The pipeline stores only LLM-paraphrased text (no article URLs), so these
+   are search/deep links built from the text rather than exact article links. */
+export function getSignalUrl(source, text) {
+  const raw = (text || '').trim();
+  if (!raw) return null;
+  const q = encodeURIComponent(raw);
+
+  switch (source) {
+    case 'Google News':
+    case 'UPI Weird News':
+      return `https://news.google.com/search?q=${q}`;
+    case 'Oddity Central':
+      return `https://www.odditycentral.com/?s=${q}`;
+    case 'Good News Network':
+      return `https://www.goodnewsnetwork.org/?s=${q}`;
+    case 'Optimist Daily':
+      return `https://www.optimistdaily.com/?s=${q}`;
+    case 'Wikipedia Top Search':
+      return `https://en.wikipedia.org/w/index.php?search=${q}`;
+    case 'Wikipedia On this Day':
+      // Strip the leading "1969: " year prefix before searching
+      return `https://en.wikipedia.org/w/index.php?search=${encodeURIComponent(raw.replace(/^\d{3,4}:\s*/, ''))}`;
+    case 'Polymarket Trending':
+      return `https://www.google.com/search?q=${encodeURIComponent('Polymarket ' + raw)}`;
+    case 'Top Song':
+      return `https://music.apple.com/us/search?term=${q}`;
+    default:
+      return `https://www.google.com/search?q=${q}`;
+  }
+}

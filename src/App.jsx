@@ -142,7 +142,7 @@ export default function App() {
     socket.on('bid:new', ({ bid }) => {
       flash();
       const isMe = bid.userId === user?.id;
-      setBids((prev) => [{ ...bid, you: isMe }, ...prev]);
+      setBids((prev) => (prev.some((b) => b.id === bid.id) ? prev : [{ ...bid, you: isMe }, ...prev]));
       setCurrentBid(bid.amount);
       if (isMe) {
         setMyBid(bid.amount);
@@ -186,10 +186,17 @@ export default function App() {
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ amount }),
     });
-    if (!r.ok) {
-      const data = await r.json();
-      throw new Error(data.error || 'Bid failed');
-    }
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'Bid failed');
+
+    // Update immediately from the response instead of waiting on the 'bid:new'
+    // socket echo, which can be delayed or dropped (reconnect race, backgrounded tab).
+    const bid = data.bid;
+    flash();
+    setBids((prev) => (prev.some((b) => b.id === bid.id) ? prev : [{ ...bid, you: true }, ...prev]));
+    setCurrentBid(bid.amount);
+    setMyBid(bid.amount);
+    setStatus('winning');
   }, [user, lot?.id, token, navigate]);
 
   const handleMobileBid = async () => {

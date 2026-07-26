@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useCurrency } from '../contexts/CurrencyContext';
+import { getSignalUrl } from './lots/artworkSignals';
 
 const pad = (n) => String(n).padStart(2, '0');
 
@@ -387,9 +388,20 @@ export default function BidRail({ auction }) {
               text = text.charAt(0).toUpperCase() + text.slice(1);
             }
             
+            const url = getSignalUrl(source, text);
             return (
               <>
-                {text} <span style={{ fontStyle: 'italic' }}>[{source}]</span>
+                {text}{' '}
+                {url ? (
+                  <a
+                    href={url}
+                    target="_blank"
+                    rel="nofollow noopener noreferrer"
+                    style={{ fontStyle: 'italic', color: 'inherit', textDecoration: 'underline dotted', textUnderlineOffset: '2px' }}
+                  >[{source}]</a>
+                ) : (
+                  <span style={{ fontStyle: 'italic' }}>[{source}]</span>
+                )}
               </>
             );
           };

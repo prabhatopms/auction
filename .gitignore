@@ -31,4 +31,5 @@ sandbox-artwork*
 sandbox-metadata*
 
 backend/public/artwork/
+backend/public/print/
 *.db

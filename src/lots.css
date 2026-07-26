@@ -1625,6 +1625,12 @@
 }
 .lot-news-banner li { margin-bottom: 4px; }
 .lot-news-banner li .src { font-style: italic; }
+.lot-news-banner li a.src {
+  color: inherit;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
+.lot-news-banner li a.src:hover { color: var(--gold-bright); }
 
 .lot-interpretive { text-align: left; }
 .lot-interpretive-label {

@@ -4,6 +4,7 @@ import { useCurrency } from '../../contexts/CurrencyContext';
 
 const API = import.meta.env.VITE_API_URL ?? '';
 import DeliveryTracker from './DeliveryTracker';
+import { getSignalUrl } from './artworkSignals';
 
 /* ---------- Pinch/scroll zoom wrapper ---------- */
 function ZoomableImage({ children, resetKey, onTap }) {
@@ -723,9 +724,20 @@ export default function PeekModal({ lot, onClose, userLoggedIn }) {
                       text = text.charAt(0).toUpperCase() + text.slice(1);
                     }
                     
+                    const url = getSignalUrl(source, text);
                     return (
                       <>
-                        {text} <span style={{ fontStyle: 'italic' }}>[{source}]</span>
+                        {text}{' '}
+                        {url ? (
+                          <a
+                            href={url}
+                            target="_blank"
+                            rel="nofollow noopener noreferrer"
+                            style={{ fontStyle: 'italic', color: 'inherit', textDecoration: 'underline dotted', textUnderlineOffset: '2px' }}
+                          >[{source}]</a>
+                        ) : (
+                          <span style={{ fontStyle: 'italic' }}>[{source}]</span>
+                        )}
                       </>
                     );
                   };

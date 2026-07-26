@@ -6,7 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useCurrency } from '../contexts/CurrencyContext';
 import { getArtworkUrl } from '../data/lotsData';
 import { createFrontCanvasForCard } from '../components/lots/LotsGrid';
-import { parseArtworkMeta, formatSignalWithSource } from '../components/lots/artworkSignals';
+import { parseArtworkMeta, formatSignalWithSource, getSignalUrl } from '../components/lots/artworkSignals';
 import '../lots.css';
 
 const API = import.meta.env.VITE_API_URL ?? '';
@@ -192,9 +192,15 @@ export default function LotDetail() {
                   <ul>
                     {signalsUsed.map((sig, idx) => {
                       const { text, source } = formatSignalWithSource(sig);
+                      const url = getSignalUrl(source, text);
                       return (
                         <li key={idx}>
-                          {text} <span className="src">[{source}]</span>
+                          {text}{' '}
+                          {url ? (
+                            <a className="src" href={url} target="_blank" rel="nofollow noopener noreferrer">[{source}]</a>
+                          ) : (
+                            <span className="src">[{source}]</span>
+                          )}
                         </li>
                       );
                     })}
