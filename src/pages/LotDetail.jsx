@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useCurrency } from '../contexts/CurrencyContext';
 import { getArtworkUrl } from '../data/lotsData';
 import { createFrontCanvasForCard } from '../components/lots/LotsGrid';
+import { parseArtworkMeta, formatSignalWithSource } from '../components/lots/artworkSignals';
 import '../lots.css';
 
 const API = import.meta.env.VITE_API_URL ?? '';
@@ -120,10 +121,11 @@ export default function LotDetail() {
     );
   }
 
-  const parsed = parseHeadline(lot.artworkHeadline);
-  const title = parsed?.title ?? lot.title;
+  const { title: parsedTitle, signalsUsed, interpretiveStatement } = parseArtworkMeta(lot.artworkHeadline);
+  const title = parsedTitle ?? lot.title;
   const topBid = lot.bids?.[0];
   const winnerName = lot.order?.user?.name ?? topBid?.user?.name ?? null;
+  const isLive = lot.status === 'active';
   const isSold = lot.paymentStatus === 'paid';
   const bidCount = lot._count?.bids ?? lot.bids?.length ?? 0;
   const dateStr = lot.startsAt
@@ -174,7 +176,9 @@ export default function LotDetail() {
 
             <div className="lot-detail-info">
               <div className="live-row">
-                <span className={'l-tag ' + (isSold ? 'sold' : 'unsold')}>{isSold ? 'Sold' : 'Reserve not met'}</span>
+                {isLive
+                  ? <span className="live-badge"><span className="dot" /> Live now</span>
+                  : <span className={'l-tag ' + (isSold ? 'sold' : 'unsold')}>{isSold ? 'Sold' : 'Reserve not met'}</span>}
                 <span className="hero-lotno">Drop #{lot.lotNumber}</span>
               </div>
               <h1 className="hero-title">{title}</h1>
@@ -182,18 +186,52 @@ export default function LotDetail() {
 
               <p className="lot-detail-desc">{lot.description}</p>
 
+              {signalsUsed.length > 0 && (
+                <div className="lot-news-banner">
+                  <span className="lot-news-banner-label">🗞 Inspired by today&apos;s happenings</span>
+                  <ul>
+                    {signalsUsed.map((sig, idx) => {
+                      const { text, source } = formatSignalWithSource(sig);
+                      return (
+                        <li key={idx}>
+                          {text} <span className="src">[{source}]</span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
+
+              {interpretiveStatement && (
+                <div className="lot-interpretive">
+                  <span className="lot-interpretive-label">Artist Interpretive Statement</span>
+                  <p>{interpretiveStatement}</p>
+                </div>
+              )}
+
               <dl className="lot-spec-list">
                 <div><dt>Artist</dt><dd>{lot.artist}</dd></div>
                 <div><dt>Size</dt><dd>{lot.size}</dd></div>
                 <div><dt>Product</dt><dd>{lot.productType === 'tshirt' ? 'T-Shirt' : lot.productType}</dd></div>
+                <div><dt>Ships</dt><dd>Worldwide</dd></div>
+                <div><dt>Material</dt><dd>220 GSM, 100% Cotton</dd></div>
                 <div><dt>Starting bid</dt><dd>{formatBid(lot.startingBid, lot)}</dd></div>
-                <div><dt>{isSold ? 'Sold for' : 'Top bid'}</dt><dd>{isSold ? formatBid(lot.soldPrice ?? topBid?.amount ?? 0, lot) : (topBid ? formatBid(topBid.amount, lot) : '—')}</dd></div>
+                <div>
+                  <dt>{isLive ? (bidCount === 0 ? 'Starting bid' : 'Current bid') : (isSold ? 'Sold for' : 'Top bid')}</dt>
+                  <dd>
+                    {isLive
+                      ? formatBid(topBid?.amount ?? lot.startingBid, lot)
+                      : (isSold ? formatBid(lot.soldPrice ?? topBid?.amount ?? 0, lot) : (topBid ? formatBid(topBid.amount, lot) : '—'))}
+                  </dd>
+                </div>
                 <div><dt>Bids placed</dt><dd>{bidCount}</dd></div>
-                {winnerName && <div><dt>Winner</dt><dd>{winnerName}</dd></div>}
+                {!isLive && winnerName && <div><dt>Winner</dt><dd>{winnerName}</dd></div>}
               </dl>
 
               <div className="hero-cta">
-                <Link className="btn-primary" to="/lots">Back to the archive <span aria-hidden="true">→</span></Link>
+                {isLive
+                  ? <Link className="btn-primary" to="/">Enter live room <span aria-hidden="true">→</span></Link>
+                  : <Link className="btn-primary" to="/lots">Back to the archive <span aria-hidden="true">→</span></Link>}
               </div>
             </div>
           </article>

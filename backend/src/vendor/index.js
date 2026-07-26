@@ -1,5 +1,5 @@
 import { prisma } from '../prisma.js';
-import { getOrGenerateBackPrintUrl } from '../backPrintCard.js';
+import { generatePrintAssets } from '../printAssets.js';
 import * as qikinkVendor from './qikink.js';
 import * as printfulVendor from './printful.js';
 import * as gelatoVendor from './gelato.js';
@@ -19,12 +19,12 @@ const QIKINK_STATUS_MAP = {
 };
 
 const qikinkAdapter = {
-  async placeOrder(order, address, _artworkUrl, backImageUrl) {
+  async placeOrder(order, address, frontImageUrl, backImageUrl) {
     let lot = null;
     try {
       lot = await prisma.lot.findUnique({ where: { id: order.lotId } });
     } catch { /* best-effort */ }
-    const vendorOrderId = await qikinkVendor.notifyVendor(order, lot, address, undefined, backImageUrl);
+    const vendorOrderId = await qikinkVendor.notifyVendor(order, lot, address, undefined, backImageUrl, frontImageUrl);
     return { vendorOrderId: vendorOrderId || null };
   },
   async getOrderStatus(_vendorOrderId) {
@@ -48,15 +48,23 @@ function getVendor(countryCode) {
 export async function routeVendorOrder(order, address, artworkUrl) {
   const { vendor, provider } = getVendor(address.country || 'IN');
 
+  // Prefer the final print files (captioned, transparent-background front and
+  // pre-rendered back card). Lazily generate + persist them for legacy lots;
+  // the raw artwork URL remains the last-resort front so orders never block.
+  let frontImageUrl = artworkUrl;
   let backImageUrl = null;
   try {
-    const lot = await prisma.lot.findUnique({ where: { id: order.lotId } });
-    backImageUrl = await getOrGenerateBackPrintUrl(lot);
+    let lot = await prisma.lot.findUnique({ where: { id: order.lotId } });
+    if (lot && (!lot.frontPrintUrl || !lot.backPrintUrl)) {
+      lot = await generatePrintAssets(lot);
+    }
+    frontImageUrl = lot?.frontPrintUrl || artworkUrl || lot?.artworkUrl;
+    backImageUrl = lot?.backPrintUrl || null;
   } catch (e) {
-    console.error('[Vendor] Back-print card generation failed, proceeding front-only:', e.message);
+    console.error('[Vendor] Print asset resolution failed, using raw artwork:', e.message);
   }
 
-  const result = await vendor.placeOrder(order, address, artworkUrl, backImageUrl);
+  const result = await vendor.placeOrder(order, address, frontImageUrl, backImageUrl);
   return { ...result, vendorProvider: provider };
 }
 

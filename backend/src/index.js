@@ -21,7 +21,8 @@ import ogRoutes from './routes/og.js';
 import { routeVendorOrder, pollAllVendorOrders } from './vendor/index.js';
 import { startScheduler, closeActiveLot, checkPaymentExpirations, createNewLot } from './scheduler.js';
 import { generateDailyArtwork, collectDailyData, generatePromptFromSignals, generateImageFromPrompt } from './artGenerator.js';
-import { notifyVendor, sendInvoiceEmail, sendShippingEmail } from './vendor/qikink.js';
+import { generatePrintAssets } from './printAssets.js';
+import { sendInvoiceEmail, sendShippingEmail } from './vendor/qikink.js';
 import { postLotToInstagram, createTextCardBuffer, resizeArtworkForInstagram, uploadBufferToGCS } from './instagramMarketing.js';
 
 // Load .env from backend directory
@@ -415,7 +416,7 @@ app.post('/api/admin/set-artwork', requireAdmin, async (req, res) => {
       return res.status(400).json({ error: 'Invalid artwork URL in draft' });
     }
 
-    const updated = await prisma.lot.update({
+    let updated = await prisma.lot.update({
       where: { id: targetLot.id },
       data: {
         artworkUrl: draft.artworkUrl,
@@ -432,11 +433,21 @@ app.post('/api/admin/set-artwork', requireAdmin, async (req, res) => {
       });
     }
 
+    // Artwork and headline both changed — force fresh print files before the
+    // emit so clients pick up the new URLs (versioned paths avoid stale caches).
+    try {
+      updated = await generatePrintAssets(updated, { force: true });
+    } catch (e) {
+      console.error('[Admin] set-artwork print asset generation failed:', e.message);
+    }
+
     getIo()?.emit('lot:artwork_updated', {
       lotId: updated.id,
       artworkUrl: updated.artworkUrl,
       artworkHeadline: updated.artworkHeadline,
       artworkPrompt: updated.artworkPrompt,
+      frontPrintUrl: updated.frontPrintUrl,
+      backPrintUrl: updated.backPrintUrl,
       swappedAt: Date.now(),
     });
 
@@ -444,6 +455,31 @@ app.post('/api/admin/set-artwork', requireAdmin, async (req, res) => {
   } catch (err) {
     console.error('[Admin] set-artwork error:', err);
     res.status(500).json({ error: 'Failed to set artwork' });
+  }
+});
+
+/* Generate (or force-regenerate) the final print files for a lot — backfill
+   for lots created before the print pipeline, or repair after a failure. */
+app.post('/api/admin/generate-print-assets', requireAdmin, async (req, res) => {
+  try {
+    const { lotId, lotNumber, force } = req.body ?? {};
+    const lot = lotId
+      ? await prisma.lot.findUnique({ where: { id: lotId } })
+      : lotNumber != null
+        ? await prisma.lot.findUnique({ where: { lotNumber: Number(lotNumber) } })
+        : await prisma.lot.findFirst({ where: { status: 'active' } });
+    if (!lot) return res.status(404).json({ error: 'Lot not found' });
+
+    const updated = await generatePrintAssets(lot, { force: !!force });
+    res.json({
+      ok: true,
+      lotNumber: updated.lotNumber,
+      frontPrintUrl: updated.frontPrintUrl,
+      backPrintUrl: updated.backPrintUrl,
+    });
+  } catch (err) {
+    console.error('[Admin] generate-print-assets error:', err);
+    res.status(500).json({ error: 'Failed to generate print assets' });
   }
 });
 
@@ -640,7 +676,15 @@ app.post('/api/admin/orders/:id/resend-vendor', async (req, res) => {
       include: { lot: true, address: true },
     });
     if (!order) return res.status(404).json({ error: 'Order not found' });
-    await notifyVendor(order, order.lot, order.address);
+    // Route by country like the payment flow (not Qikink-only) so resends
+    // carry the same front/back print files as the original dispatch.
+    const result = await routeVendorOrder(order, order.address, order.lot.artworkUrl);
+    if (result?.vendorOrderId && result.vendorOrderId !== order.vendorOrderId) {
+      await prisma.order.update({
+        where: { id: order.id },
+        data: { vendorOrderId: result.vendorOrderId, vendorProvider: result.vendorProvider },
+      });
+    }
     res.json({ ok: true });
   } catch (err) {
     console.error('[Resend vendor] error:', err);
@@ -834,6 +878,59 @@ app.get('/api/artwork/:filename', async (req, res) => {
     console.error('[Artwork Proxy] Fallback generation failed:', fallbackErr.message);
     res.status(404).json({ error: 'Artwork not found' });
   }
+});
+
+/* Print-file proxy — same CORS story as the artwork proxy, for the final
+   front/back print PNGs (front-print/ and back-print/ GCS prefixes). No
+   placeholder fallback: a 404 tells the frontend to render its canvas decal. */
+app.get('/api/print/:side/:filename', async (req, res) => {
+  const { side, filename } = req.params;
+  if (!['front', 'back'].includes(side)) return res.status(400).json({ error: 'Invalid side' });
+  if (!/^lot-[\w-]+\.png$/.test(filename)) return res.status(400).json({ error: 'Invalid filename' });
+
+  const localDir = join(__dir, '../public/print', side);
+  const localPath = join(localDir, filename);
+
+  try {
+    const { createReadStream } = await import('node:fs');
+    const { stat } = await import('node:fs/promises');
+    await stat(localPath);
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Cache-Control', 'public, max-age=31536000');
+    createReadStream(localPath).pipe(res);
+    return;
+  } catch { /* not cached locally, fall through to GCS */ }
+
+  const bucketName = process.env.GCS_BUCKET_NAME;
+  if (bucketName) {
+    try {
+      const { Storage } = await import('@google-cloud/storage');
+      const storage = new Storage();
+      const file = storage.bucket(bucketName).file(`${side}-print/${filename}`);
+
+      const [exists] = await file.exists();
+      if (exists) {
+        const [buffer] = await file.download();
+
+        const { writeFile, mkdir } = await import('node:fs/promises');
+        try {
+          await mkdir(localDir, { recursive: true });
+          await writeFile(localPath, buffer);
+        } catch (e) {
+          console.error('[Print Proxy] Failed to cache GCS file locally:', e.message);
+        }
+
+        res.setHeader('Content-Type', 'image/png');
+        res.setHeader('Cache-Control', 'public, max-age=31536000');
+        res.send(buffer);
+        return;
+      }
+    } catch (gcsErr) {
+      console.error('[Print Proxy] GCS download failed:', gcsErr.message);
+    }
+  }
+
+  res.status(404).json({ error: 'Print file not found' });
 });
 
 

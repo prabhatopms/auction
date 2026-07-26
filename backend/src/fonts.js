@@ -8,6 +8,8 @@ const __dir = dirname(fileURLToPath(import.meta.url));
 // relying on system fonts broke repeatedly on Railway's Linux environment.
 export const FONT_REGULAR = join(__dir, 'fonts', 'Roboto-Regular.woff');
 export const FONT_BOLD = join(__dir, 'fonts', 'Roboto-Bold.woff');
+// TTF (not WOFF): resvg's font loader only parses ttf/otf; satori reads it too.
+export const FONT_SERIF = join(__dir, 'fonts', 'Gelasio-Regular.ttf');
 
 let _fonts = null;
 export async function ensureFonts() {
@@ -24,4 +26,18 @@ export async function ensureFonts() {
   ];
   console.log('[Fonts] Roboto WOFF fonts loaded from disk.');
   return _fonts;
+}
+
+// Serif for print files — Gelasio is metric-compatible with Georgia, which the
+// frontend canvases used, so printed text matches what bidders saw on screen.
+let _serifFonts = null;
+export async function ensureSerifFonts() {
+  if (_serifFonts) return _serifFonts;
+  const serif = await fs.readFile(FONT_SERIF);
+  const toAB = (buf) => buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+  _serifFonts = [
+    { name: 'Gelasio', data: toAB(serif), weight: 400, style: 'normal' },
+  ];
+  console.log('[Fonts] Gelasio TTF font loaded from disk.');
+  return _serifFonts;
 }

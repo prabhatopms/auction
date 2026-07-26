@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { fmt, getArtworkUrl } from '../../data/lotsData';
+import { fmt, getArtworkUrl, getPrintUrl } from '../../data/lotsData';
 import { useCurrency } from '../../contexts/CurrencyContext';
 
 const API = import.meta.env.VITE_API_URL ?? '';
@@ -401,14 +401,25 @@ export default function PeekModal({ lot, onClose, userLoggedIn }) {
   }, [onClose]);
 
   useEffect(() => {
-    if (artworkUrl) {
+    // Server print files are the source of truth; canvas drawing is the
+    // fallback for lots without them. (Draft previews below always draw
+    // client-side — drafts have no print files.)
+    const frontPrint = getPrintUrl(lot, 'front', API);
+    if (frontPrint) {
+      setFrontOverlaySrc(frontPrint);
+    } else if (artworkUrl) {
       createFrontCanvasForCard(artworkUrl, lot, (canvas) => {
         if (canvas) setFrontOverlaySrc(canvas.toDataURL());
       });
     }
-    createBackCanvasForCard('/cf_logo.png', lot, (canvas) => {
-      if (canvas) setBackOverlaySrc(canvas.toDataURL());
-    });
+    const backPrint = getPrintUrl(lot, 'back', API);
+    if (backPrint) {
+      setBackOverlaySrc(backPrint);
+    } else {
+      createBackCanvasForCard('/cf_logo.png', lot, (canvas) => {
+        if (canvas) setBackOverlaySrc(canvas.toDataURL());
+      });
+    }
   }, [artworkUrl, lot]);
 
   // Render draft images

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { getArtworkUrl } from '../../data/lotsData';
+import { getArtworkUrl, getPrintUrl, loadPrintCanvas } from '../../data/lotsData';
 import { useCurrency } from '../../contexts/CurrencyContext';
 
 const API = import.meta.env.VITE_API_URL ?? '';
@@ -20,8 +20,19 @@ function useCountdown(getTarget) {
 }
 
 export function createFrontCanvasForCard(artworkImage, lot, callback) {
-  const lotNo = lot?.lotNumber != null 
-    ? (lot.lotNumber < 0 ? 'Old ' + Math.abs(lot.lotNumber) : String(lot.lotNumber).padStart(3, '0')) 
+  // Server-generated print file is the source of truth (it's what gets
+  // printed); draw client-side only for lots without one.
+  const printUrl = getPrintUrl(lot, 'front', API);
+  if (printUrl) {
+    loadPrintCanvas(printUrl, (canvas) => {
+      if (canvas) return callback(canvas);
+      createFrontCanvasForCard(artworkImage, { ...lot, frontPrintUrl: null }, callback);
+    });
+    return;
+  }
+
+  const lotNo = lot?.lotNumber != null
+    ? (lot.lotNumber < 0 ? 'Old ' + Math.abs(lot.lotNumber) : String(lot.lotNumber).padStart(3, '0'))
     : (lot?.lotNo ? String(lot.lotNo).padStart(3, '0') : '001');
 
   const rawDate = lot?.startsAt || new Date();

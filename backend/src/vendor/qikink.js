@@ -115,15 +115,15 @@ export async function pollQikinkOrders() {
   }
 }
 
-export async function notifyVendor(order, lot, address, userEmail, backImageUrl) {
+export async function notifyVendor(order, lot, address, userEmail, backImageUrl, frontImageUrl) {
   if (process.env.QIKINK_CLIENT_ID && process.env.QIKINK_CLIENT_SECRET) {
-    return await _callQikinkApi(order, lot, address, userEmail, backImageUrl);
+    return await _callQikinkApi(order, lot, address, userEmail, backImageUrl, frontImageUrl);
   }
   await _sendVendorEmail(order, lot, address);
   return null;
 }
 
-async function _callQikinkApi(order, lot, address, userEmail, backImageUrl) {
+async function _callQikinkApi(order, lot, address, userEmail, backImageUrl, frontImageUrl) {
   try {
     const token = await _getAccessToken();
     const size = order.tshirtSize || 'M';
@@ -146,7 +146,11 @@ async function _callQikinkApi(order, lot, address, userEmail, backImageUrl) {
 
     // design_code doubles as a stable ID for this lot's design in Qikink's system.
     // Passing a new code auto-creates the design; passing an existing one reuses it.
-    const designCode = `oxidelot${lot.lotNumber}`;
+    // Versioned print files (front-print/lot-N-{ts}.png) carry their version into
+    // the code so a resend after an artwork swap doesn't reuse Qikink's cached design.
+    const frontUrl = frontImageUrl || lot.frontPrintUrl || lot.artworkUrl || '';
+    const version = (frontUrl.match(/lot--?\d+-(\d+)\.png$/) || [])[1];
+    const designCode = version ? `oxidelot${lot.lotNumber}v${version}` : `oxidelot${lot.lotNumber}`;
 
     const payload = {
       order_number: order.orderNumber.replace(/-/g, ''),
@@ -167,10 +171,10 @@ async function _callQikinkApi(order, lot, address, userEmail, backImageUrl) {
               width_inches: '10',
               height_inches: '12',
               placement_sku: 'fr',
-              design_link: lot.artworkUrl || '',
+              design_link: frontUrl,
               // mockup_link is only shown in Qikink's dashboard, not used for printing.
-              // We don't generate t-shirt mockups so we reuse the artwork URL.
-              mockup_link: lot.artworkUrl || '',
+              // We don't generate t-shirt mockups so we reuse the print file URL.
+              mockup_link: frontUrl,
             },
             ...(backImageUrl ? [{
               design_code: `${designCode}-bk`,

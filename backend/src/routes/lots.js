@@ -307,11 +307,14 @@ router.get('/past', async (req, res) => {
   res.json({ lots });
 });
 
-/* GET /api/lots/sitemap-list — minimal fields for sitemap.xml generation */
+/* GET /api/lots/sitemap-list — lightweight lot list for sitemap.xml and llms.txt generation */
 router.get('/sitemap-list', async (req, res) => {
   const lots = await prisma.lot.findMany({
     where: { lotNumber: { gt: 0 } },
-    select: { lotNumber: true, endsAt: true, startsAt: true, status: true },
+    select: {
+      lotNumber: true, endsAt: true, startsAt: true, status: true,
+      title: true, artist: true, soldPrice: true, paymentStatus: true,
+    },
     orderBy: { lotNumber: 'desc' },
   });
   res.json({ lots });
@@ -347,7 +350,7 @@ router.get('/by-number/:lotNumber', async (req, res) => {
       where: { lotNumber: { not: lotNumber, gt: 0 }, status: 'closed' },
       orderBy: { endsAt: 'desc' },
       take: 4,
-      select: { lotNumber: true, title: true, artworkUrl: true, artworkHeadline: true, soldPrice: true, status: true },
+      select: { lotNumber: true, title: true, artworkUrl: true, artworkHeadline: true, frontPrintUrl: true, soldPrice: true, status: true },
     }),
   ]);
 

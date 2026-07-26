@@ -1,6 +1,7 @@
 User-agent: *
 Allow: /
 Allow: /lots
+Allow: /lots/
 Disallow: /admin
 Disallow: /pay
 Disallow: /orders
@@ -8,3 +9,7 @@ Disallow: /addresses
 Disallow: /profile
 
 Sitemap: https://oxide.chemicalfarmers.com/sitemap.xml
+
+# LLM/AI-tool index (llmstxt.org convention) — plain-language site summary
+# with live current-drop and archive links, regenerated on every request.
+# https://oxide.chemicalfarmers.com/llms.txt

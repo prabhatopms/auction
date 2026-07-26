@@ -3,6 +3,7 @@ import { Resend } from 'resend';
 import { prisma } from './prisma.js';
 import { getIo } from './socket.js';
 import { generateDailyArtwork } from './artGenerator.js';
+import { generatePrintAssets } from './printAssets.js';
 import { STARTING_BID } from './constants.js';
 import { getLotTitle, lotNo, lotDateStr, getAppUrl, productImageBlock, ctaButton, emailWrapper, escHtml } from './email-helpers.js';
 import { pollQikinkOrders } from './vendor/qikink.js';
@@ -174,7 +175,7 @@ async function createNewLot(lotNumber, preloadedArt = null) {
     }
   }
 
-  const lot = await prisma.lot.create({
+  let lot = await prisma.lot.create({
     data: {
       ...template,
       lotNumber,
@@ -202,6 +203,15 @@ async function createNewLot(lotNumber, preloadedArt = null) {
         artworkPrompt: art.artworkPrompt,
       },
     });
+  }
+
+  // Generate the final print files (front composite + back card) before the
+  // lot:new emit so clients receive the URLs; failures leave them null and the
+  // frontend/vendor paths fall back gracefully.
+  try {
+    lot = await generatePrintAssets(lot);
+  } catch (err) {
+    console.error('[Scheduler] Print asset generation failed:', err.message);
   }
 
   console.log(`[Scheduler] Lot #${lotNumber} created — bidding open for 18 hours.`);

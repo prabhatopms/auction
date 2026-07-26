@@ -598,6 +598,9 @@ Return a JSON object with this exact structure:
         config: {
           numberOfImages: 1,
           aspectRatio: '3:4',
+          // 2K source (~1792x2560) so the 10x12in DTG print file needs almost
+          // no upscaling (print canvas is 2400x3200).
+          sampleImageSize: '2K',
           outputMimeType: 'image/png',
         },
       });
@@ -807,6 +810,9 @@ export async function generateImageFromPrompt(prompt, lotNumber, headlineStr) {
     config: {
       numberOfImages: 1,
       aspectRatio: '3:4',
+      // 2K source (~1792x2560) so the 10x12in DTG print file needs almost
+      // no upscaling (print canvas is 2400x3200).
+      sampleImageSize: '2K',
       outputMimeType: 'image/png',
     },
   });

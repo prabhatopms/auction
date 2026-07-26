@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DecalGeometry } from 'three/examples/jsm/geometries/DecalGeometry.js';
-import { getArtworkUrl } from '../data/lotsData';
+import { getArtworkUrl, getPrintUrl, loadPrintCanvas } from '../data/lotsData';
 
 // Canvas generators for front and back decals
 function createFrontCanvas(artworkImage, lot, callback) {
@@ -499,26 +499,48 @@ export default function Stage({ modelCount = 0, lot, onTap }) {
         const tempMesh = new THREE.Mesh(child.geometry, child.material);
         tempMesh.updateMatrixWorld(true);
 
-        if (artworkSrc) {
-          createFrontCanvas(artworkSrc, lot, (frontCanvas) => {
-            if (!frontCanvas) return;
-            const texture = new THREE.CanvasTexture(frontCanvas);
-            texture.colorSpace = THREE.SRGBColorSpace;
-            texture.anisotropy = maxAniso;
-            const dg = new DecalGeometry(
-              tempMesh,
-              new THREE.Vector3(0, -0.01, 0.15),
-              new THREE.Euler(0, 0, 0),
-              new THREE.Vector3(0.246, 0.328, 0.246),
-            );
-            child.add(new THREE.Mesh(dg, new THREE.MeshStandardMaterial({
-              map: texture, transparent: true, roughness: 0.8,
-              depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4,
-            })));
-          });
-        }
+        // Prefer the server-generated print file (what actually gets printed);
+        // fall back to drawing the canvas client-side for lots without one.
+        const buildFront = (cb) => {
+          const printUrl = getPrintUrl(lot, 'front', API_URL);
+          if (printUrl) {
+            loadPrintCanvas(printUrl, (c) => {
+              if (c) return cb(c);
+              if (artworkSrc) createFrontCanvas(artworkSrc, lot, cb);
+            });
+          } else if (artworkSrc) {
+            createFrontCanvas(artworkSrc, lot, cb);
+          }
+        };
+        buildFront((frontCanvas) => {
+          if (!frontCanvas) return;
+          const texture = new THREE.CanvasTexture(frontCanvas);
+          texture.colorSpace = THREE.SRGBColorSpace;
+          texture.anisotropy = maxAniso;
+          const dg = new DecalGeometry(
+            tempMesh,
+            new THREE.Vector3(0, -0.01, 0.15),
+            new THREE.Euler(0, 0, 0),
+            new THREE.Vector3(0.246, 0.328, 0.246),
+          );
+          child.add(new THREE.Mesh(dg, new THREE.MeshStandardMaterial({
+            map: texture, transparent: true, roughness: 0.8,
+            depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4,
+          })));
+        });
 
-        createBackCanvas('/cf_logo.png', lot, (backCanvas) => {
+        const buildBack = (cb) => {
+          const printUrl = getPrintUrl(lot, 'back', API_URL);
+          if (printUrl) {
+            loadPrintCanvas(printUrl, (c) => {
+              if (c) return cb(c);
+              createBackCanvas('/cf_logo.png', lot, cb);
+            });
+          } else {
+            createBackCanvas('/cf_logo.png', lot, cb);
+          }
+        };
+        buildBack((backCanvas) => {
           if (!backCanvas) return;
           const logoTexture = new THREE.CanvasTexture(backCanvas);
           logoTexture.colorSpace = THREE.SRGBColorSpace;

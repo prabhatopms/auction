@@ -47,6 +47,8 @@ model Lot {
   artworkUrl      String?
   artworkHeadline String?
   artworkPrompt   String?
+  frontPrintUrl   String?        // final composited front print PNG (artwork + caption, transparent bg)
+  backPrintUrl    String?        // pre-rendered back print PNG (data signals card)
   productType     String         @default("tshirt")
   bids            Bid[]
   order           Order?

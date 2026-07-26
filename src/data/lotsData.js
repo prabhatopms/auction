@@ -40,6 +40,40 @@ export function getArtworkUrl(lot, apiBaseUrl = '') {
   return null;
 }
 
+/* Server-generated print file (front composite / back card) for a lot side.
+   Returns null when the lot has no print asset — callers fall back to the
+   client-side canvas rendering. GCS URLs are proxied through the backend for
+   CORS; filenames are versioned so no cache-bust query is needed. */
+export function getPrintUrl(lot, side, apiBaseUrl = '') {
+  const raw = side === 'back' ? lot?.backPrintUrl : lot?.frontPrintUrl;
+  if (!raw || raw === 'null' || raw === 'undefined') return null;
+
+  if (/^https?:\/\/storage\.googleapis\.com\//.test(raw)) {
+    const filename = raw.split('/').pop();
+    if (filename) return `${apiBaseUrl}/api/print/${side}/${filename}`;
+  }
+  // Any other absolute URL (CDN) — use directly
+  if (/^https?:\/\/(?!localhost|127\.0\.0\.1)/.test(raw)) return raw;
+  return null;
+}
+
+/* Load a server-generated print file into a canvas so callers can treat it
+   exactly like the client-drawn decal canvases (toDataURL, CanvasTexture…).
+   Calls back with null on load failure so callers can fall back. */
+export function loadPrintCanvas(url, callback) {
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.src = url;
+  img.onload = () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    canvas.getContext('2d').drawImage(img, 0, 0);
+    callback(canvas);
+  };
+  img.onerror = () => callback(null);
+}
+
 /* deterministic PRNG so the archive is stable across reloads */
 function rng(seed) {
   let s = seed >>> 0;

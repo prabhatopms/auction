@@ -48,14 +48,18 @@ export default function SEO({ lot, page = 'home' }) {
 
   if (page === 'lot-detail' && lot) {
     const lotTitle = lot.title ?? `Drop #${lot.lotNumber}`;
+    const isLive = lot.status === 'active';
     const isSold = lot.paymentStatus === 'paid';
     const soldPrice = lot.soldPrice ?? null;
     const canonicalUrl = `${SITE}/lots/${lot.lotNumber}`;
     const ogImageUrl = `${API}/api/og/lot/${lot.id}`;
 
     const title = `"${lotTitle}" — Oxide Drop #${lot.lotNumber}`;
+    const outcome = isLive
+      ? 'Bidding is open now.'
+      : (isSold ? `Sold for ₹${Number(soldPrice ?? 0).toLocaleString('en-IN')}.` : 'Reserve not met.');
     const desc = lot.description
-      ? `${lot.description.slice(0, 150)}${lot.description.length > 150 ? '…' : ''} ${isSold ? `Sold for ₹${Number(soldPrice ?? 0).toLocaleString('en-IN')}.` : 'Reserve not met.'} One tee, never reprinted.`
+      ? `${lot.description.slice(0, 150)}${lot.description.length > 150 ? '…' : ''} ${outcome} One tee, never reprinted.`
       : `"${lotTitle}" — a one-of-one AI-generated art tee from Oxide, Drop #${lot.lotNumber}.`;
 
     const jsonLd = {
@@ -69,8 +73,10 @@ export default function SEO({ lot, page = 'home' }) {
       offers: {
         '@type': 'Offer',
         priceCurrency: 'INR',
-        price: isSold ? soldPrice : lot.startingBid,
-        availability: isSold ? 'https://schema.org/SoldOut' : 'https://schema.org/Discontinued',
+        price: isLive ? lot.startingBid : (isSold ? soldPrice : lot.startingBid),
+        availability: isLive
+          ? 'https://schema.org/InStock'
+          : (isSold ? 'https://schema.org/SoldOut' : 'https://schema.org/Discontinued'),
         url: canonicalUrl,
       },
     };

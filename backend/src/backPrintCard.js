@@ -1,12 +1,16 @@
 import satori from 'satori';
 import { Resvg } from '@resvg/resvg-js';
-import { Storage } from '@google-cloud/storage';
-import { ensureFonts, FONT_REGULAR, FONT_BOLD } from './fonts.js';
+import { ensureSerifFonts, FONT_SERIF } from './fonts.js';
 
-// Matches the live-room back decal canvas (Stage.jsx / PeekModal.jsx createBackCanvas):
-// 1200x1600, transparent background, centered white text listing the day's signals.
-const W = 1200;
-const H = 1600;
+// Back print card: the day's data signals as centered white serif text on a
+// transparent canvas. Mirrors the live-room back decal (Stage.jsx
+// createBackCanvas: 27px Georgia on 1200x1600, block centered at 1/4 height),
+// rendered at 2x for print (2400x3200 ≈ 240 DPI on a 10x12in DTG area).
+const W = 2400;
+const H = 3200;
+const FONT_SIZE = 54;    // 2x the client's 27px
+const LINE_HEIGHT = 84;  // 2x the client's 42px
+const TEXT_WIDTH = 1440; // 2x the client's 720px wrap width
 
 function parseSummarizedSignals(lot) {
   if (!lot?.artworkHeadline) return [];
@@ -21,7 +25,9 @@ function parseSummarizedSignals(lot) {
 }
 
 function buildBackTextElement(signalsSummarized) {
-  const text = signalsSummarized.join('   •   ');
+  // NBSPs around the bullet survive satori's whitespace collapsing while the
+  // plain spaces at the edges still allow line wrapping (client uses '   •   ').
+  const text = signalsSummarized.join('  •  ');
   return {
     type: 'div',
     props: {
@@ -29,25 +35,39 @@ function buildBackTextElement(signalsSummarized) {
         display: 'flex',
         width: W,
         height: H,
-        justifyContent: 'center',
-        paddingTop: 340,
+        flexDirection: 'column',
       },
       children: [
         {
+          // Top half of the canvas with the block centered in it — matches the
+          // client's vertical centering of the text block at 1/4 canvas height.
           type: 'div',
           props: {
             style: {
               display: 'flex',
-              width: 880,
+              width: W,
+              height: H / 2,
               justifyContent: 'center',
-              textAlign: 'center',
-              color: '#FFFFFF',
-              fontFamily: 'Roboto',
-              fontSize: 36,
-              lineHeight: 1.6,
-              letterSpacing: 0.5,
+              alignItems: 'center',
             },
-            children: [text],
+            children: [
+              {
+                type: 'div',
+                props: {
+                  style: {
+                    display: 'flex',
+                    width: TEXT_WIDTH,
+                    justifyContent: 'center',
+                    textAlign: 'center',
+                    color: '#FFFFFF',
+                    fontFamily: 'Gelasio',
+                    fontSize: FONT_SIZE,
+                    lineHeight: LINE_HEIGHT / FONT_SIZE,
+                  },
+                  children: [text],
+                },
+              },
+            ],
           },
         },
       ],
@@ -59,52 +79,12 @@ export async function generateBackPrintBuffer(lot) {
   const signals = parseSummarizedSignals(lot);
   if (signals.length === 0) return null;
 
-  const fonts = await ensureFonts();
+  const fonts = await ensureSerifFonts();
   const element = buildBackTextElement(signals);
   const svg = await satori(element, { width: W, height: H, fonts });
   const png = new Resvg(svg, {
     fitTo: { mode: 'originalSize' },
-    font: { fontFiles: [FONT_REGULAR, FONT_BOLD], loadSystemFonts: false },
+    font: { fontFiles: [FONT_SERIF], loadSystemFonts: false },
   }).render().asPng();
   return Buffer.from(png);
-}
-
-// Cached by lot number in GCS — regenerating on every order is wasted work since
-// a closed lot's signals never change.
-export async function getOrGenerateBackPrintUrl(lot) {
-  if (!process.env.GCS_BUCKET_NAME) return null;
-
-  const destination = `back-print/lot-${lot.lotNumber}.png`;
-  const gcsUrl = `https://storage.googleapis.com/${process.env.GCS_BUCKET_NAME}/${destination}`;
-
-  try {
-    const check = await fetch(gcsUrl, { method: 'HEAD' });
-    if (check.ok) return gcsUrl;
-  } catch {
-    // fall through to generate
-  }
-
-  const buffer = await generateBackPrintBuffer(lot);
-  if (!buffer) return null;
-
-  const storage = new Storage();
-  const bucket = storage.bucket(process.env.GCS_BUCKET_NAME);
-  const file = bucket.file(destination);
-  await file.save(buffer, {
-    contentType: 'image/png',
-    metadata: { cacheControl: 'public, max-age=31536000' },
-  });
-
-  try {
-    await file.makePublic();
-  } catch {
-    const verify = await fetch(gcsUrl, { method: 'HEAD' });
-    if (!verify.ok) {
-      console.warn('[BackPrint] GCS object not publicly accessible:', gcsUrl);
-      return null;
-    }
-  }
-
-  console.log(`[BackPrint] Generated back-print card for lot #${lot.lotNumber}: ${gcsUrl}`);
-  return gcsUrl;
 }

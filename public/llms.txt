@@ -1,0 +1,20 @@
+# Oxide
+
+> One AI-generated art t-shirt, auctioned live every 24 hours. One-of-one. Never reprinted.
+
+Oxide runs a continuous, autonomous art auction: each day a new AI-generated
+design is created and printed as a single one-of-one t-shirt, then auctioned
+to the highest bidder over a live bidding window. Every past drop — sold or
+passed — stays permanently viewable in the archive, one URL per lot.
+
+## Live auction
+- [Live room](https://oxide.chemicalfarmers.com/): the current drop, live bid feed, and countdown.
+
+## Reference
+- [How it works](https://oxide.chemicalfarmers.com/how-it-works): auction mechanics, bid-raise logic, the bidding window, and how daily generation works.
+- [Lots & Archive](https://oxide.chemicalfarmers.com/lots): every past drop with sold price, winner, and bid count.
+- [Sitemap](https://oxide.chemicalfarmers.com/sitemap.xml): full machine-readable URL list, updated live.
+
+Note: this static file is a fallback. The live version at /llms.txt is
+regenerated on every request with the current drop and full drop-by-drop
+history — fetch it directly rather than caching this copy.
