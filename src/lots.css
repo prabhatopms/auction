@@ -1457,7 +1457,7 @@
 
 .lot-detail {
   display: grid;
-  grid-template-columns: minmax(0, 380px) 1fr;
+  grid-template-columns: minmax(0, 460px) 1fr;
   gap: clamp(24px, 4vw, 56px);
   border: 1px solid var(--line-strong);
   border-radius: var(--r-lg);
@@ -1468,7 +1468,42 @@
   box-shadow: 0 20px 60px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.05);
   margin-bottom: 32px;
 }
-.lot-detail-art { display: flex; align-items: center; justify-content: center; }
+.lot-detail-art { display: flex; align-items: flex-start; justify-content: center; }
+
+/* detail-page gallery (front/back/artwork shots, zoom, fullscreen) */
+.lot-detail-gallery {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+}
+.lot-detail-gallery .g-main {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 5 / 5.6;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: radial-gradient(90% 80% at 50% 30%, rgb(var(--glow) / 0.08), transparent 60%), var(--bg-1);
+}
+.lot-detail-gallery .m-tshirt-base:not(.immersive) { width: min(84%, 432px); }
+.lot-detail-gallery .m-chest-art:not(.immersive) { width: min(30%, 139px); }
+.lot-detail-gallery .g-hint {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px;
+  color: rgba(255,255,255,0.28);
+  letter-spacing: 0.05em;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.lot-detail-gallery .m-thumbs { padding: 0; }
+
 .lot-detail-info { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .lot-detail-info .live-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .lot-detail-info .live-badge {

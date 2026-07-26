@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useCurrency } from '../contexts/CurrencyContext';
 import { getArtworkUrl } from '../data/lotsData';
 import { createFrontCanvasForCard } from '../components/lots/LotsGrid';
+import LotGallery from '../components/lots/LotGallery';
 import { parseArtworkMeta, formatSignalWithSource, getSignalUrl } from '../components/lots/artworkSignals';
 import '../lots.css';
 
@@ -69,7 +70,6 @@ export default function LotDetail() {
 
   const [data, setData] = useState(null);
   const [notFound, setNotFound] = useState(false);
-  const [overlaySrc, setOverlaySrc] = useState(null);
 
   useEffect(() => {
     document.body.classList.add('lots-page-body');
@@ -79,7 +79,6 @@ export default function LotDetail() {
   useEffect(() => {
     setData(null);
     setNotFound(false);
-    setOverlaySrc(null);
     fetch(`${API}/api/lots/by-number/${lotNumber}`)
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .then((d) => setData(d))
@@ -87,15 +86,6 @@ export default function LotDetail() {
   }, [lotNumber]);
 
   const lot = data?.lot;
-
-  useEffect(() => {
-    if (!lot) return;
-    const artUrl = getArtworkUrl(lot, API);
-    if (!artUrl) return;
-    createFrontCanvasForCard(artUrl, lot, (canvas) => {
-      if (canvas) setOverlaySrc(canvas.toDataURL());
-    });
-  }, [lot]);
 
   if (notFound) {
     return (
@@ -168,10 +158,7 @@ export default function LotDetail() {
 
           <article className="lot-detail">
             <div className="lot-detail-art">
-              <div className="hero-tshirt-wrap">
-                <img src="/tshirt_front_black_transparent10small.png" alt="" className="hero-tshirt-base" />
-                {overlaySrc && <img src={overlaySrc} alt={title} className="hero-chest-art" />}
-              </div>
+              <LotGallery lot={lot} title={title} />
             </div>
 
             <div className="lot-detail-info">
