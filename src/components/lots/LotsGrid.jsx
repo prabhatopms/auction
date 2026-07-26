@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { getArtworkUrl } from '../../data/lotsData';
 import { useCurrency } from '../../contexts/CurrencyContext';
 
@@ -18,7 +19,7 @@ function useCountdown(getTarget) {
   return { h: Math.floor(total / 3600), m: Math.floor(total % 3600 / 60), s: total % 60, total };
 }
 
-function createFrontCanvasForCard(artworkImage, lot, callback) {
+export function createFrontCanvasForCard(artworkImage, lot, callback) {
   const lotNo = lot?.lotNumber != null 
     ? (lot.lotNumber < 0 ? 'Old ' + Math.abs(lot.lotNumber) : String(lot.lotNumber).padStart(3, '0')) 
     : (lot?.lotNo ? String(lot.lotNo).padStart(3, '0') : '001');
@@ -247,9 +248,9 @@ export function LotCard({ lot, onPeek, showRibbon, userLoggedIn }) {
   }
 
   return (
-    <button
+    <Link
+      to={`/lots/${lot.lotNumber ?? lotNo}`}
       className={'lot-card' + (lot.owned && userLoggedIn ? ' is-owned' : '')}
-      onClick={() => onPeek(lot)}
     >
       <div className="card-art">
         {/* Zoom wrapper — scale on hover centered on chest */}
@@ -275,7 +276,17 @@ export function LotCard({ lot, onPeek, showRibbon, userLoggedIn }) {
             ? <span className="owned-ribbon">✦ Yours</span>
             : <span className={'l-tag ' + (passed ? 'unsold' : 'sold')}>{passed ? 'Passed' : 'Sold'}</span>}
         </div>
-        <span className="peek-hint">Quick peek →</span>
+        <button
+          type="button"
+          className="peek-hint"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onPeek(lot);
+          }}
+        >
+          Quick peek →
+        </button>
       </div>
       <div className="card-body">
         <h3 className="card-title">{lot.title}</h3>
@@ -294,7 +305,7 @@ export function LotCard({ lot, onPeek, showRibbon, userLoggedIn }) {
           </div>
         </div>
       </div>
-    </button>
+    </Link>
   );
 }
 

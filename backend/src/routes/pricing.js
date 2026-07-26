@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import geoip from 'geoip-lite';
 import { prisma } from '../prisma.js';
+import { requireAdmin } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -57,7 +58,7 @@ router.get('/product-prices', async (_req, res) => {
 });
 
 /* GET /api/admin/product-prices — same, under admin namespace */
-router.get('/admin/product-prices', async (_req, res) => {
+router.get('/admin/product-prices', requireAdmin, async (_req, res) => {
   try {
     const prices = await prisma.productPrice.findMany({ orderBy: [{ productType: 'asc' }, { currency: 'asc' }] });
     res.json({ prices });
@@ -68,7 +69,7 @@ router.get('/admin/product-prices', async (_req, res) => {
 });
 
 /* PUT /api/admin/product-prices/:productType — upsert all currency prices for a product type */
-router.put('/admin/product-prices/:productType', async (req, res) => {
+router.put('/admin/product-prices/:productType', requireAdmin, async (req, res) => {
   try {
     const { productType } = req.params;
     const { prices } = req.body;

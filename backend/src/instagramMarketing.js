@@ -1,36 +1,15 @@
 import sharp from 'sharp';
-import { promises as fs } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { promises as fs } from 'node:fs';
 import { Storage } from '@google-cloud/storage';
 import { GoogleGenAI } from '@google/genai';
 import satori from 'satori';
 import { Resvg } from '@resvg/resvg-js';
+import { ensureFonts, FONT_REGULAR, FONT_BOLD } from './fonts.js';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const IG_API = 'https://graph.instagram.com/v25.0';
-
-// ─── Font loader (bundled WOFF — no CDN dependency, no fontconfig) ────────────
-
-const FONT_REGULAR = join(__dir, 'fonts', 'Roboto-Regular.woff');
-const FONT_BOLD    = join(__dir, 'fonts', 'Roboto-Bold.woff');
-
-let _fonts = null;
-async function ensureFonts() {
-  if (_fonts) return _fonts;
-  const [regular, bold] = await Promise.all([
-    fs.readFile(FONT_REGULAR),
-    fs.readFile(FONT_BOLD),
-  ]);
-  // satori needs ArrayBuffer; Buffer.buffer may be a shared pool so slice it
-  const toAB = (buf) => buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
-  _fonts = [
-    { name: 'Roboto', data: toAB(regular), weight: 400, style: 'normal' },
-    { name: 'Roboto', data: toAB(bold),    weight: 700, style: 'normal' },
-  ];
-  console.log('[Instagram] Roboto WOFF fonts loaded from disk.');
-  return _fonts;
-}
 
 // ─── Signal parser ────────────────────────────────────────────────────────────
 

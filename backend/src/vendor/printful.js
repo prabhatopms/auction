@@ -22,13 +22,13 @@ function _authHeaders() {
   return h;
 }
 
-export async function placeOrder(order, address, artworkUrl) {
+export async function placeOrder(order, address, artworkUrl, backImageUrl) {
   if (!process.env.PRINTFUL_API_KEY) {
     await _sendVendorEmail(order, address, artworkUrl);
     return { vendorOrderId: 'printful-pending-' + order.orderNumber };
   }
   try {
-    return await _callApi(order, address, artworkUrl);
+    return await _callApi(order, address, artworkUrl, backImageUrl);
   } catch (err) {
     console.error('[Printful] API call failed, falling back to email:', err.message);
     await _sendVendorEmail(order, address, artworkUrl);
@@ -36,7 +36,7 @@ export async function placeOrder(order, address, artworkUrl) {
   }
 }
 
-async function _callApi(order, address, artworkUrl) {
+async function _callApi(order, address, artworkUrl, backImageUrl) {
   const size = order.tshirtSize || 'M';
   const variantId = _variantForSize(size);
   if (!variantId) throw new Error('No Printful variant ID configured for size ' + size);
@@ -66,7 +66,10 @@ async function _callApi(order, address, artworkUrl) {
         variant_id: variantId,
         quantity: 1,
         retail_price: String((order.amount / 100).toFixed(2)),
-        files: [{ type: 'default', url: artworkUrl }],
+        files: [
+          { type: 'default', url: artworkUrl },
+          ...(backImageUrl ? [{ type: 'back', url: backImageUrl }] : []),
+        ],
       },
     ],
   };

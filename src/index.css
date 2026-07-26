@@ -939,12 +939,10 @@ body.lots-page-body #root {
 
 /* Desktop: lock the body and use internal scroll containers instead */
 @media (min-width: 901px) {
-  body.lots-page-body,
   body.how-it-works-page-body {
     overflow: hidden;
     height: 100vh;
   }
-  body.lots-page-body #root,
   body.how-it-works-page-body #root {
     overflow: hidden;
     height: 100vh;
@@ -968,12 +966,11 @@ body.lots-page-body #root {
     flex-shrink: 0;
   }
 
-  /* Page shells become full-height flex columns */
+  /* Lots page scrolls normally — hero scrolls away with the rest of the page */
   .lots-app {
-    height: 100vh;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
+    height: auto;
+    display: block;
+    overflow: visible;
   }
   .how-it-works-page {
     height: 100vh;
@@ -982,12 +979,9 @@ body.lots-page-body #root {
     overflow: hidden;
   }
 
-  /* lots-wrap: flex column, fills remaining height, no scroll itself */
   .lots-wrap {
-    flex: 1 1 auto;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
+    display: block;
+    overflow: visible;
     margin: 0 auto;
     padding: 0 clamp(20px, 4vw, 52px);
     max-width: 1320px;
@@ -995,16 +989,11 @@ body.lots-page-body #root {
     box-sizing: border-box;
   }
 
-  /* The actual scroll happens only inside archive-scroll-area */
   .archive-scroll-area {
-    flex: 1 1 auto;
-    overflow-y: auto;
+    overflow: visible;
     padding-top: 8px;
     padding-bottom: 80px;
   }
-  .archive-scroll-area::-webkit-scrollbar { width: 6px; }
-  .archive-scroll-area::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
-  .archive-scroll-area::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); }
 
   /* how-it-works-content: flex column, fills remaining height */
   .how-it-works-content {

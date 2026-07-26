@@ -46,6 +46,71 @@ export default function SEO({ lot, page = 'home' }) {
     );
   }
 
+  if (page === 'lot-detail' && lot) {
+    const lotTitle = lot.title ?? `Drop #${lot.lotNumber}`;
+    const isSold = lot.paymentStatus === 'paid';
+    const soldPrice = lot.soldPrice ?? null;
+    const canonicalUrl = `${SITE}/lots/${lot.lotNumber}`;
+    const ogImageUrl = `${API}/api/og/lot/${lot.id}`;
+
+    const title = `"${lotTitle}" — Oxide Drop #${lot.lotNumber}`;
+    const desc = lot.description
+      ? `${lot.description.slice(0, 150)}${lot.description.length > 150 ? '…' : ''} ${isSold ? `Sold for ₹${Number(soldPrice ?? 0).toLocaleString('en-IN')}.` : 'Reserve not met.'} One tee, never reprinted.`
+      : `"${lotTitle}" — a one-of-one AI-generated art tee from Oxide, Drop #${lot.lotNumber}.`;
+
+    const jsonLd = {
+      '@context': 'https://schema.org',
+      '@type': 'Product',
+      name: lotTitle,
+      description: lot.description ?? desc,
+      sku: `OXIDE-${lot.lotNumber}`,
+      brand: { '@type': 'Brand', name: 'Oxide' },
+      image: ogImageUrl,
+      offers: {
+        '@type': 'Offer',
+        priceCurrency: 'INR',
+        price: isSold ? soldPrice : lot.startingBid,
+        availability: isSold ? 'https://schema.org/SoldOut' : 'https://schema.org/Discontinued',
+        url: canonicalUrl,
+      },
+    };
+
+    const breadcrumbLd = {
+      '@context': 'https://schema.org',
+      '@type': 'BreadcrumbList',
+      itemListElement: [
+        { '@type': 'ListItem', position: 1, name: 'Oxide', item: `${SITE}/` },
+        { '@type': 'ListItem', position: 2, name: 'Lots & Archive', item: `${SITE}/lots` },
+        { '@type': 'ListItem', position: 3, name: lotTitle, item: canonicalUrl },
+      ],
+    };
+
+    return (
+      <Helmet>
+        <title>{title}</title>
+        <meta name="description" content={desc} />
+        <link rel="canonical" href={canonicalUrl} />
+
+        <meta property="og:url" content={canonicalUrl} />
+        <meta property="og:type" content="website" />
+        <meta property="og:title" content={title} />
+        <meta property="og:description" content={desc} />
+        <meta property="og:image" content={ogImageUrl} />
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height" content="630" />
+        <meta property="og:image:alt" content={`${lotTitle} — Oxide`} />
+
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={title} />
+        <meta name="twitter:description" content={desc} />
+        <meta name="twitter:image" content={ogImageUrl} />
+
+        <script type="application/ld+json">{JSON.stringify(jsonLd)}</script>
+        <script type="application/ld+json">{JSON.stringify(breadcrumbLd)}</script>
+      </Helmet>
+    );
+  }
+
   if (!lot) {
     return (
       <Helmet>

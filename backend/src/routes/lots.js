@@ -4,7 +4,8 @@ import Razorpay from 'razorpay';
 import { prisma } from '../prisma.js';
 import { optionalAuth, requireAuth } from '../middleware/auth.js';
 import { getIo } from '../socket.js';
-import { notifyVendor, sendInvoiceEmail, getLotTitle } from '../vendor/qikink.js';
+import { sendInvoiceEmail, getLotTitle } from '../vendor/qikink.js';
+import { routeVendorOrder } from '../vendor/index.js';
 import { MIN_INCREMENT } from '../constants.js';
 
 const razorpay = new Razorpay({
@@ -209,6 +210,15 @@ router.post('/verify-payment', requireAuth, async (req, res) => {
     const address = await prisma.address.findUnique({ where: { id: addressId } });
     if (!address || address.userId !== req.userId) return res.status(400).json({ error: 'Invalid address.' });
 
+    // Source the actually-charged amount/currency from Razorpay's verified order record,
+    // never from the client — req.body values are unverified and must not drive money fields.
+    const razorpayOrder = await razorpay.orders.fetch(razorpayOrderId);
+    if (razorpayOrder.notes?.lotId !== lot.id || razorpayOrder.notes?.userId !== req.userId) {
+      return res.status(400).json({ error: 'Payment order does not match this lot/user.' });
+    }
+    const paidCurrency = razorpayOrder.currency || 'INR';
+    const paidDisplayAmount = paidCurrency !== 'INR' ? String(razorpayOrder.amount / 100) : null;
+
     const user = await prisma.user.findUnique({ where: { id: req.userId } });
     const bids = await prisma.bid.findMany({ where: { lotId: lot.id, userId: req.userId }, orderBy: { amount: 'desc' }, take: 1 });
     const amount = bids[0]?.amount ?? lot.startingBid;
@@ -238,8 +248,8 @@ router.post('/verify-payment', requireAuth, async (req, res) => {
           razorpayOrderId,
           razorpayPaymentId,
           status: 'processing',
-          currency: req.body.currency || 'INR',
-          displayAmount: req.body.displayAmount || null,
+          currency: paidCurrency,
+          displayAmount: paidDisplayAmount,
           vendorProvider,
         },
       }),
@@ -247,7 +257,13 @@ router.post('/verify-payment', requireAuth, async (req, res) => {
 
     getIo()?.emit('lot:paid', { lotId: lot.id, winnerId: req.userId });
 
-    notifyVendor(order, lot, address, user.email).catch((e) => console.error('[Vendor] notify failed:', e));
+    routeVendorOrder(order, address, lot.artworkUrl)
+      .then((result) => {
+        if (result.vendorOrderId) {
+          return prisma.order.update({ where: { id: order.id }, data: { vendorOrderId: result.vendorOrderId } });
+        }
+      })
+      .catch((e) => console.error('[Vendor] notify failed:', e));
     sendInvoiceEmail(order, lot, address, user.email, user.name).catch((e) => console.error('[Invoice] email failed:', e));
 
     res.json({ ok: true, orderId: order.id, orderNumber });
@@ -289,6 +305,53 @@ router.get('/past', async (req, res) => {
     },
   });
   res.json({ lots });
+});
+
+/* GET /api/lots/sitemap-list — minimal fields for sitemap.xml generation */
+router.get('/sitemap-list', async (req, res) => {
+  const lots = await prisma.lot.findMany({
+    where: { lotNumber: { gt: 0 } },
+    select: { lotNumber: true, endsAt: true, startsAt: true, status: true },
+    orderBy: { lotNumber: 'desc' },
+  });
+  res.json({ lots });
+});
+
+/* GET /api/lots/by-number/:lotNumber — permalink page: lot + prev/next + related */
+router.get('/by-number/:lotNumber', async (req, res) => {
+  const lotNumber = parseInt(req.params.lotNumber, 10);
+  if (!Number.isFinite(lotNumber)) return res.status(400).json({ error: 'Invalid lot number' });
+
+  const lot = await prisma.lot.findUnique({
+    where: { lotNumber },
+    include: {
+      _count: { select: { bids: true } },
+      bids: { orderBy: { amount: 'desc' }, take: 1, include: { user: { select: { name: true } } } },
+      order: { select: { amount: true, user: { select: { name: true } } } },
+    },
+  });
+  if (!lot || lot.lotNumber < 0) return res.status(404).json({ error: 'Lot not found' });
+
+  const [prevLot, nextLot, related] = await Promise.all([
+    prisma.lot.findFirst({
+      where: { lotNumber: { lt: lotNumber, gt: 0 } },
+      orderBy: { lotNumber: 'desc' },
+      select: { lotNumber: true, title: true },
+    }),
+    prisma.lot.findFirst({
+      where: { lotNumber: { gt: lotNumber } },
+      orderBy: { lotNumber: 'asc' },
+      select: { lotNumber: true, title: true },
+    }),
+    prisma.lot.findMany({
+      where: { lotNumber: { not: lotNumber, gt: 0 }, status: 'closed' },
+      orderBy: { endsAt: 'desc' },
+      take: 4,
+      select: { lotNumber: true, title: true, artworkUrl: true, artworkHeadline: true, soldPrice: true, status: true },
+    }),
+  ]);
+
+  res.json({ lot, prevLot, nextLot, related });
 });
 
 /* GET /api/lots/:id */
@@ -376,7 +439,13 @@ router.post('/dev-simulate-payment', requireAuth, async (req, res) => {
     ]);
 
     getIo()?.emit('lot:paid', { lotId: lot.id, winnerId: req.userId });
-    notifyVendor(order, lot, address, user.email).catch((e) => console.error('[Vendor] notify failed:', e));
+    routeVendorOrder(order, address, lot.artworkUrl)
+      .then((result) => {
+        if (result.vendorOrderId) {
+          return prisma.order.update({ where: { id: order.id }, data: { vendorOrderId: result.vendorOrderId } });
+        }
+      })
+      .catch((e) => console.error('[Vendor] notify failed:', e));
     sendInvoiceEmail(order, lot, address, user.email, user.name).catch((e) => console.error('[Invoice] email failed:', e));
 
     res.json({ ok: true, orderId: order.id, orderNumber });

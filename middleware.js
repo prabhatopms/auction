@@ -10,7 +10,7 @@
  */
 
 export const config = {
-  matcher: ['/', '/lots'],
+  matcher: ['/', '/lots', '/lots/:lotNumber', '/sitemap.xml'],
 };
 
 const SITE = 'https://oxide.chemicalfarmers.com';
@@ -78,12 +78,61 @@ function buildPage({ title, description, ogImage, canonicalUrl, jsonLd }) {
 </html>`;
 }
 
-export default async function middleware(request) {
-  const ua = request.headers.get('user-agent') ?? '';
-  if (!isBot(ua)) return; // pass through to SPA
+function xmlEsc(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
 
+async function buildSitemap(api) {
+  const data = await fetch(`${api}/api/lots/sitemap-list`, {
+    headers: { 'User-Agent': 'Oxide-Meta-Bot/1.0' },
+    signal: AbortSignal.timeout(4000),
+  })
+    .then((r) => (r.ok ? r.json() : null))
+    .catch(() => null);
+
+  const lots = data?.lots ?? [];
+
+  const staticUrls = [
+    { loc: `${SITE}/`, changefreq: 'hourly', priority: '1.0' },
+    { loc: `${SITE}/lots`, changefreq: 'daily', priority: '0.8' },
+    { loc: `${SITE}/how-it-works`, changefreq: 'monthly', priority: '0.4' },
+  ];
+
+  const lotUrls = lots.map((l) => ({
+    loc: `${SITE}/lots/${l.lotNumber}`,
+    lastmod: l.endsAt ? new Date(l.endsAt).toISOString().slice(0, 10) : undefined,
+    changefreq: 'weekly',
+    priority: '0.6',
+  }));
+
+  const all = [...staticUrls, ...lotUrls];
+  const body = all.map((u) => `  <url>
+    <loc>${xmlEsc(u.loc)}</loc>${u.lastmod ? `\n    <lastmod>${u.lastmod}</lastmod>` : ''}
+    <changefreq>${u.changefreq}</changefreq>
+    <priority>${u.priority}</priority>
+  </url>`).join('\n');
+
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${body}\n</urlset>`;
+}
+
+export default async function middleware(request) {
   const url = new URL(request.url);
   const api = apiBase();
+
+  // Sitemap is regenerated on every request so new lots appear without a redeploy.
+  if (url.pathname === '/sitemap.xml') {
+    try {
+      const xml = await buildSitemap(api);
+      return new Response(xml, {
+        headers: { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=3600' },
+      });
+    } catch {
+      return; // fall through to the static public/sitemap.xml
+    }
+  }
+
+  const ua = request.headers.get('user-agent') ?? '';
+  if (!isBot(ua)) return; // pass through to SPA
 
   try {
     if (url.pathname === '/') {
@@ -138,6 +187,61 @@ export default async function middleware(request) {
       return new Response(
         buildPage({ title, description, ogImage, canonicalUrl: `${SITE}/lots`, jsonLd: null }),
         { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=300' } },
+      );
+    }
+
+    const lotMatch = url.pathname.match(/^\/lots\/(\d+)$/);
+    if (lotMatch) {
+      const lotNumber = lotMatch[1];
+      const data = await fetch(`${api}/api/lots/by-number/${lotNumber}`, {
+        headers: { 'User-Agent': 'Oxide-Meta-Bot/1.0' },
+        signal: AbortSignal.timeout(3000),
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null);
+
+      const lot = data?.lot;
+      const canonicalUrl = `${SITE}/lots/${lotNumber}`;
+      if (!lot) {
+        return new Response(
+          buildPage({
+            title: 'Lot not found — Oxide',
+            description: 'This drop doesn\'t exist, or hasn\'t happened yet.',
+            ogImage: `${SITE}/og-default.png`,
+            canonicalUrl,
+            jsonLd: null,
+          }),
+          { status: 404, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } },
+        );
+      }
+
+      const lotTitle = lot.title ?? `Drop #${lot.lotNumber}`;
+      const isSold = lot.paymentStatus === 'paid';
+      const title = `"${lotTitle}" — Oxide Drop #${lot.lotNumber}`;
+      const description = lot.description
+        ? `${lot.description.slice(0, 150)}… ${isSold ? `Sold for ₹${Number(lot.soldPrice ?? 0).toLocaleString('en-IN')}.` : 'Reserve not met.'} One tee, never reprinted.`
+        : `"${lotTitle}" — a one-of-one AI-generated art tee from Oxide, Drop #${lot.lotNumber}.`;
+      const ogImage = `${api}/api/og/lot/${lot.id}`;
+
+      const jsonLd = JSON.stringify({
+        '@context': 'https://schema.org',
+        '@type': 'Product',
+        name: lotTitle,
+        description: lot.description ?? description,
+        brand: { '@type': 'Brand', name: 'Oxide' },
+        image: ogImage,
+        offers: {
+          '@type': 'Offer',
+          priceCurrency: 'INR',
+          price: isSold ? lot.soldPrice : lot.startingBid,
+          availability: isSold ? 'https://schema.org/SoldOut' : 'https://schema.org/Discontinued',
+          url: canonicalUrl,
+        },
+      });
+
+      return new Response(
+        buildPage({ title, description, ogImage, canonicalUrl, jsonLd }),
+        { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=600' } },
       );
     }
   } catch {

@@ -115,15 +115,15 @@ export async function pollQikinkOrders() {
   }
 }
 
-export async function notifyVendor(order, lot, address, userEmail) {
+export async function notifyVendor(order, lot, address, userEmail, backImageUrl) {
   if (process.env.QIKINK_CLIENT_ID && process.env.QIKINK_CLIENT_SECRET) {
-    return await _callQikinkApi(order, lot, address, userEmail);
+    return await _callQikinkApi(order, lot, address, userEmail, backImageUrl);
   }
   await _sendVendorEmail(order, lot, address);
   return null;
 }
 
-async function _callQikinkApi(order, lot, address, userEmail) {
+async function _callQikinkApi(order, lot, address, userEmail, backImageUrl) {
   try {
     const token = await _getAccessToken();
     const size = order.tshirtSize || 'M';
@@ -172,6 +172,14 @@ async function _callQikinkApi(order, lot, address, userEmail) {
               // We don't generate t-shirt mockups so we reuse the artwork URL.
               mockup_link: lot.artworkUrl || '',
             },
+            ...(backImageUrl ? [{
+              design_code: `${designCode}-bk`,
+              width_inches: '10',
+              height_inches: '12',
+              placement_sku: 'bk',
+              design_link: backImageUrl,
+              mockup_link: backImageUrl,
+            }] : []),
           ],
         },
       ],

@@ -1,4 +1,5 @@
 import { prisma } from '../prisma.js';
+import { getOrGenerateBackPrintUrl } from '../backPrintCard.js';
 import * as qikinkVendor from './qikink.js';
 import * as printfulVendor from './printful.js';
 import * as gelatoVendor from './gelato.js';
@@ -18,12 +19,12 @@ const QIKINK_STATUS_MAP = {
 };
 
 const qikinkAdapter = {
-  async placeOrder(order, address, _artworkUrl) {
+  async placeOrder(order, address, _artworkUrl, backImageUrl) {
     let lot = null;
     try {
       lot = await prisma.lot.findUnique({ where: { id: order.lotId } });
     } catch { /* best-effort */ }
-    const vendorOrderId = await qikinkVendor.notifyVendor(order, lot, address);
+    const vendorOrderId = await qikinkVendor.notifyVendor(order, lot, address, undefined, backImageUrl);
     return { vendorOrderId: vendorOrderId || null };
   },
   async getOrderStatus(_vendorOrderId) {
@@ -46,7 +47,16 @@ function getVendor(countryCode) {
 
 export async function routeVendorOrder(order, address, artworkUrl) {
   const { vendor, provider } = getVendor(address.country || 'IN');
-  const result = await vendor.placeOrder(order, address, artworkUrl);
+
+  let backImageUrl = null;
+  try {
+    const lot = await prisma.lot.findUnique({ where: { id: order.lotId } });
+    backImageUrl = await getOrGenerateBackPrintUrl(lot);
+  } catch (e) {
+    console.error('[Vendor] Back-print card generation failed, proceeding front-only:', e.message);
+  }
+
+  const result = await vendor.placeOrder(order, address, artworkUrl, backImageUrl);
   return { ...result, vendorProvider: provider };
 }
 

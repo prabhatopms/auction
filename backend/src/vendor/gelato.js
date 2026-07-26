@@ -8,21 +8,25 @@ const BASE = 'https://order.gelatoapis.com';
 // Gelato product UIDs encode the full product spec as a structured string.
 // Default: classic unisex crewneck, front-only print (4-0), color from GELATO_PRODUCT_COLOR (default: black).
 // Override individual sizes with GELATO_PRODUCT_UID_MAP JSON: {"M":"apparel_product_..."}
-function _productUidForSize(size) {
-  const map = process.env.GELATO_PRODUCT_UID_MAP ? JSON.parse(process.env.GELATO_PRODUCT_UID_MAP) : {};
+// When a back-print image exists, GELATO_PRODUCT_UID_MAP_BOTH_SIDES supplies the matching
+// front+back (gpr_4-4) product UID per size — these are distinct catalog products, not a flag.
+function _productUidForSize(size, hasBack) {
+  const mapKey = hasBack ? 'GELATO_PRODUCT_UID_MAP_BOTH_SIDES' : 'GELATO_PRODUCT_UID_MAP';
+  const map = process.env[mapKey] ? JSON.parse(process.env[mapKey]) : {};
   if (map[size]) return map[size];
   const s = (size || 'M').toLowerCase().replace('xxl', '2xl').replace('xxxl', '3xl');
   const color = process.env.GELATO_PRODUCT_COLOR || 'black';
-  return `apparel_product_gca_t-shirt_gsc_crewneck_gcu_unisex_gqa_classic_gsi_${s}_gco_${color}_gpr_4-0`;
+  const gpr = hasBack ? '4-4' : '4-0';
+  return `apparel_product_gca_t-shirt_gsc_crewneck_gcu_unisex_gqa_classic_gsi_${s}_gco_${color}_gpr_${gpr}`;
 }
 
-export async function placeOrder(order, address, artworkUrl) {
+export async function placeOrder(order, address, artworkUrl, backImageUrl) {
   if (!process.env.GELATO_API_KEY) {
     await _sendVendorEmail(order, address, artworkUrl);
     return { vendorOrderId: 'gelato-pending-' + order.orderNumber };
   }
   try {
-    return await _callApi(order, address, artworkUrl);
+    return await _callApi(order, address, artworkUrl, backImageUrl);
   } catch (err) {
     console.error('[Gelato] API call failed, falling back to email:', err.message);
     await _sendVendorEmail(order, address, artworkUrl);
@@ -30,7 +34,7 @@ export async function placeOrder(order, address, artworkUrl) {
   }
 }
 
-async function _callApi(order, address, artworkUrl) {
+async function _callApi(order, address, artworkUrl, backImageUrl) {
   const size = order.tshirtSize || 'M';
 
   // Fetch user email if not on the order object
@@ -51,8 +55,11 @@ async function _callApi(order, address, artworkUrl) {
     items: [
       {
         itemReferenceId: `${order.orderNumber}-1`,
-        productUid: _productUidForSize(size),
-        files: [{ type: 'default', url: artworkUrl }],
+        productUid: _productUidForSize(size, !!backImageUrl),
+        files: [
+          { type: 'default', url: artworkUrl },
+          ...(backImageUrl ? [{ type: 'back', url: backImageUrl }] : []),
+        ],
         quantity: 1,
       },
     ],
